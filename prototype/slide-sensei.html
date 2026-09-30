@@ -1,3 +1,8 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>スライド先生</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -138,7 +143,9 @@
     gap: 16px; padding: 16px; min-height: 0;
   }
   @media (max-width: 960px) {
-    .workspace { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+    .app { height: auto; min-height: 100vh; }
+    .workspace { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+    .capture-panel { min-height: 420px; }
   }
 
   /* Left: capture area */
@@ -195,31 +202,6 @@
   }
   .primary-cta:hover { background: color-mix(in oklab, var(--accent) 90%, black); }
   .primary-cta:active { transform: translateY(1px); }
-
-  .capture-target-box {
-    position: absolute;
-    border: 3px solid var(--accent);
-    border-radius: 6px;
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
-    pointer-events: none;
-    transition: all 0.35s cubic-bezier(0.2, 0.7, 0.3, 1);
-    display: none;
-  }
-  .capture-target-box.on { display: block; animation: pulse-ring 1.4s ease-in-out infinite; }
-  @keyframes pulse-ring {
-    0%,100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
-    50%     { box-shadow: 0 0 0 8px color-mix(in oklab, var(--accent) 32%, transparent); }
-  }
-  .capture-target-label {
-    position: absolute; padding: 4px 10px;
-    background: var(--accent); color: white; font-size: 12px; font-weight: 600;
-    border-radius: 999px; pointer-events: none;
-    white-space: nowrap;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    display: none;
-  }
-  .capture-target-label.on { display: inline-block; }
-
   .capture-foot {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 14px; border-top: 1px solid var(--border-soft);
@@ -330,57 +312,84 @@
   .btn.danger:hover { background: var(--accent-soft); }
   .actions-spacer { flex: 1; }
 
-  /* Setup dialog */
-  .backdrop {
-    position: fixed; inset: 0; background: color-mix(in oklab, var(--ink) 55%, transparent);
-    display: grid; place-items: center; z-index: 200; padding: 16px;
-    animation: fade 0.15s ease;
+
+  .btn:disabled { opacity: 0.45; cursor: default; }
+
+  /* ─── Current step card ─────────────────────────── */
+  .watch {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--muted);
   }
-  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
-  .dialog {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-    padding: 22px; max-width: 460px; width: 100%;
-    box-shadow: var(--shadow-lift);
+  .watch::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: var(--border);
   }
-  .dialog h2 {
-    margin: 0 0 6px; font-family: var(--font-ui); font-size: 18px; font-weight: 700;
-    letter-spacing: -0.01em;
+  .watch.on::before { background: var(--success); animation: pulse-dot 1.8s ease-in-out infinite; }
+  .watch.moving::before { background: var(--warn); }
+  .watch.small { color: var(--warn); }
+
+  .step-card {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; background: var(--panel);
   }
-  .dialog p { margin: 4px 0 14px; color: var(--muted); font-size: 13px; }
-  .dialog input[type="password"], .dialog input[type="text"] {
-    width: 100%; padding: 10px 12px; font: inherit; font-family: var(--font-mono);
-    background: var(--panel-alt); color: var(--ink);
-    border: 1px solid var(--border); border-radius: 8px;
-    outline: none; transition: border-color 0.15s;
+  .step-num {
+    font-family: var(--font-ui); font-size: 11px; font-weight: 600;
+    color: var(--ai); letter-spacing: 0.08em;
   }
-  .dialog input:focus { border-color: var(--accent); }
-  .dialog .dialog-actions {
-    display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
+  .step-text { font-size: 16px; font-weight: 700; margin: 4px 0 6px; line-height: 1.45; }
+  .step-hint { font-size: 12.5px; color: var(--ink-soft); margin: 0; }
+  .expect-chip {
+    display: inline-block; margin-top: 10px;
+    font-size: 11px; padding: 2px 10px; border-radius: 999px;
+    background: var(--ai-soft); color: var(--ai);
   }
-  .dialog small { color: var(--muted); font-size: 11px; display: block; margin-top: 8px; }
-  .dialog a { color: var(--ai); }
+
+  .confirm {
+    display: grid; gap: 10px; padding: 12px 14px; border-radius: 10px;
+    background: var(--success-soft); border: 1px solid color-mix(in oklab, var(--success) 35%, transparent);
+    animation: slide-in 0.25s ease;
+  }
+  .confirm p { margin: 0; font-size: 13.5px; }
+  .confirm .row { display: flex; gap: 8px; }
+  .confirm .btn.yes { background: var(--success); border-color: var(--success); color: white; }
+
+  .done-card {
+    text-align: center; padding: 20px 16px; border-radius: 10px;
+    background: var(--success-soft); color: color-mix(in oklab, var(--success) 40%, var(--ink));
+  }
+  .done-card strong { display: block; font-size: 18px; margin-bottom: 4px; }
+
+  .log-head { font-size: 11px; color: var(--muted); font-family: var(--font-ui); letter-spacing: 0.06em; margin-top: 4px; }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
+  .log time { font-family: var(--font-mono); margin-right: 6px; }
+
+  /* ─── Mini window (Document Picture-in-Picture) ─── */
+  body.pip { min-height: 0; }
+  body.pip .tutor { height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
+  .tutor-home-note {
+    display: grid; place-items: center; text-align: center; gap: 8px;
+    background: var(--panel); border: 1px dashed var(--border); border-radius: 12px;
+    color: var(--muted); padding: 24px;
+  }
 
   [hidden] { display: none !important; }
 </style>
-
+</head>
+<body>
 <div class="app">
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">P</span>
       スライド先生
-      <span class="brand-sub">— 実PowerPointをAIが見て教える</span>
+      <span class="brand-sub">— AIなし（手動確認）モード</span>
     </div>
     <div class="topbar-spacer"></div>
     <div class="capture-chip" id="captureChip">未共有</div>
     <div class="lesson-picker">
       <label for="lessonSelect">レッスン</label>
-      <select id="lessonSelect">
-        <option value="first-slide">はじめてのスライド</option>
-        <option value="insert-shape">図形を使いこなす</option>
-        <option value="design-theme">見やすいデザインテーマ</option>
-      </select>
+      <select id="lessonSelect"></select>
     </div>
-    <button class="icon-btn" id="settingsBtn" title="設定">⚙</button>
+    <button class="icon-btn" id="pipBtn" title="案内を常に最前面の小窓に出す">📌 ミニ窓で表示</button>
     <button class="icon-btn" id="themeToggle" title="テーマ切替">🌙</button>
   </header>
 
@@ -389,34 +398,28 @@
     <section class="capture-panel" aria-label="画面キャプチャ">
       <div class="capture-header">
         <strong>共有画面プレビュー</strong>
-        <span class="dim">— AIがここを見て指示します</span>
+        <span class="dim">— 画面の変化を見て「できた？」と確認します</span>
       </div>
-      <div class="capture-stage" id="captureStage">
+      <div class="capture-stage">
         <div class="empty" id="emptyState">
           <div style="font-size: 48px;">🖥️</div>
           <h2>PowerPointの画面を共有してください</h2>
           <p>
-            「画面共有を開始」を押すと、ブラウザが共有するウインドウを聞いてきます。
-            <br><strong>Microsoft PowerPoint のウインドウ</strong>を選んでください。
-            <br>選択後は3〜5秒ごとにAIが画面を読み、次にすべき一手を指示します。
+            「画面共有を開始」を押し、<strong>ウインドウ</strong>タブから
+            <strong>Microsoft PowerPoint</strong> を選んでください。
+            <br>共有したら「📌 ミニ窓で表示」で案内を PowerPoint の上に置けます。
           </p>
-          <button class="primary-cta" id="startCaptureBtn">
-            🎥 画面共有を開始
-          </button>
-          <p style="font-size: 12px;">
-            画像はGoogle Gemini APIへ送信されます。APIキーの設定が必要です。
-          </p>
+          <button class="primary-cta" id="startCaptureBtn">🎥 画面共有を開始</button>
+          <p style="font-size: 12px;">画像はこのブラウザ内だけで処理し、外部へは送信しません。</p>
         </div>
         <video id="captureVideo" autoplay muted playsinline hidden></video>
-        <div class="capture-target-box" id="targetBox"></div>
-        <div class="capture-target-label" id="targetLabel"></div>
       </div>
       <div class="capture-foot">
-        <span class="stat" id="statFrames">解析 0 回</span>
+        <span class="stat" id="statMotion">動き —</span>
         <span class="sep">·</span>
-        <span class="stat" id="statLast">最終: —</span>
+        <span class="stat" id="statNet">差 —</span>
         <span class="sep">·</span>
-        <span class="stat" id="statInterval">間隔 4.0秒</span>
+        <span class="stat" id="statChanges">変化 0 回</span>
         <div class="actions">
           <button class="btn" id="pauseBtn" hidden>⏸ 一時停止</button>
           <button class="btn danger" id="stopCaptureBtn" hidden>共有を停止</button>
@@ -424,490 +427,468 @@
       </div>
     </section>
 
-    <!-- AI Tutor -->
-    <aside class="tutor" aria-label="AIチューター">
-      <div class="tutor-head">
-        <div class="ai-avatar">✨</div>
-        <div>
-          <div class="tutor-name">AIチューター</div>
-          <div class="tutor-lesson" id="tutorLessonName">レッスン: はじめてのスライド</div>
+    <!-- Tutor -->
+    <div id="tutorHome" style="display: grid; min-height: 0;">
+      <div class="tutor-home-note" id="tutorHomeNote" hidden>
+        <div style="font-size: 32px;">📌</div>
+        <div>案内はミニ窓に表示中です。<br>ミニ窓を閉じるとここに戻ります。</div>
+      </div>
+      <aside class="tutor" id="tutor" aria-label="案内">
+        <div class="tutor-head">
+          <div class="ai-avatar">✨</div>
+          <div>
+            <div class="tutor-name">スライド先生</div>
+            <div class="tutor-lesson" id="tutorLessonName"></div>
+          </div>
+          <div class="tutor-head-status" id="tutorStatus">共有待ち</div>
         </div>
-        <div class="tutor-head-status" id="tutorStatus">待機中</div>
-      </div>
 
-      <div class="tutor-progress">
-        <div class="progress-head">
-          <strong id="progressStepTitle">開始待ち</strong>
-          <span id="progressCount">0 / 0</span>
+        <div class="tutor-progress">
+          <div class="progress-head">
+            <strong id="progressTitle"></strong>
+            <span id="progressCount">0 / 0</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
         </div>
-        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-      </div>
 
-      <div class="tutor-body" id="messages" aria-live="polite"></div>
+        <div class="tutor-body" aria-live="polite">
+          <div class="step-card" id="stepCard">
+            <div class="step-num" id="stepNum"></div>
+            <div class="step-text" id="stepText"></div>
+            <p class="step-hint" id="stepHint"></p>
+            <span class="expect-chip" id="expectChip"></span>
+          </div>
 
-      <div class="tutor-actions">
-        <button class="btn" id="hintBtn">💡 ヒント</button>
-        <button class="btn" id="restartBtn">やり直し</button>
-        <div class="actions-spacer"></div>
-        <button class="btn primary" id="nextBtn">次へ →</button>
-      </div>
-    </aside>
-  </div>
-</div>
+          <div class="done-card" id="doneCard" hidden>
+            <strong>🎉 レッスン完了！</strong>
+            お疲れさまでした。別のレッスンも試してみてください。
+          </div>
 
-<div class="backdrop" id="setupDialog" hidden>
-  <div class="dialog">
-    <h2>Gemini APIキーを設定</h2>
-    <p>
-      画面解析には Google Gemini の無料APIキーが必要です。
-      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
-        aistudio.google.com/apikey</a> で取得できます。
-    </p>
-    <input type="password" id="apiKeyInput" placeholder="AIzaSy... で始まるキーを貼り付け"
-           autocomplete="off" spellcheck="false">
-    <small>キーはこのブラウザ (localStorage) に保存されます。他へは送信されません。</small>
-    <div class="dialog-actions">
-      <button class="btn" id="setupCancel">キャンセル</button>
-      <button class="btn primary" id="setupSave">保存</button>
+          <div class="confirm" id="confirmBox" hidden>
+            <p id="confirmText"></p>
+            <div class="row">
+              <button class="btn yes" id="yesBtn">できた ✓</button>
+              <button class="btn" id="notYetBtn">まだ</button>
+            </div>
+          </div>
+
+          <div class="watch" id="watch">画面共有を開始すると、変化を見守ります。</div>
+
+          <div class="log-head">記録</div>
+          <ul class="log" id="log"></ul>
+        </div>
+
+        <div class="tutor-actions">
+          <button class="btn" id="backBtn">← 戻る</button>
+          <button class="btn" id="restartBtn">やり直し</button>
+          <div class="actions-spacer"></div>
+          <button class="btn primary" id="nextBtn">次へ →</button>
+        </div>
+      </aside>
     </div>
   </div>
 </div>
 
 <script>
 // ─── Lesson definitions ───────────────────────────────
+// expect: このステップを確認するのに必要な変化の大きさ（それ未満の変化では「できた？」を出さない）
+//   any   : どんな変化でも
+//   small : 小 (<3%)   クリック・文字入力・タブ切替
+//   medium: 中 (3〜20%) 新しいスライド・メニュー・テーマ
+//   large : 大 (≥20%)  レイアウトの大きな変更
 const LESSONS = {
   "first-slide": {
     name: "はじめてのスライド",
-    goal: "PowerPointを開き、タイトル付きのスライドを1枚仕上げ、2枚目を追加する。",
     steps: [
-      "PowerPointで新規プレゼンテーションを開く（既に開いていればOK）",
-      "スライド上部の「タイトルを入力」枠をクリック",
-      "タイトルを入力する（例:「新しい企画のご提案」）",
-      "「サブタイトルを入力」枠をクリックし、1〜2文入力する",
-      "リボンの「ホーム」タブから「新しいスライド」を追加する",
+      { text: "PowerPointで新規プレゼンテーションを開く",
+        hint: "すでに白紙のスライドが開いていれば「次へ」で進めます。", expect: "any" },
+      { text: "スライド上部の「タイトルを入力」枠をクリック",
+        hint: "点線の枠の中をクリックすると、文字が消えてカーソルが点滅します。", expect: "small" },
+      { text: "タイトルを入力する",
+        hint: "例:「新しい企画のご提案」。入力が終わったら少し手を止めてください。", expect: "small" },
+      { text: "「サブタイトルを入力」枠をクリックし、1〜2文入力する",
+        hint: "タイトルの下にある枠です。", expect: "small" },
+      { text: "「ホーム」タブの「新しいスライド」で2枚目を追加する",
+        hint: "左端のスライド一覧に2枚目が増えれば成功です。", expect: "medium" },
     ],
   },
   "insert-shape": {
     name: "図形を使いこなす",
-    goal: "挿入タブから図形を追加し、色を変えて配置を整える。",
     steps: [
-      "リボンの「挿入」タブに切り替える",
-      "「図形」ボタンから四角形などを選んでスライドに追加する",
-      "追加した図形を選択した状態で「図形の書式」から色を変える",
-      "図形の位置を中央付近にドラッグして整える",
+      { text: "リボンの「挿入」タブに切り替える",
+        hint: "画面上部のタブの並びにあります。", expect: "small" },
+      { text: "「図形」ボタンから四角形を選び、スライド上でドラッグして描く",
+        hint: "図形一覧が開いたら「四角形」の最初のアイコンを選びます。", expect: "small" },
+      { text: "図形を選んだまま「図形の書式」タブで塗りつぶしの色を変える",
+        hint: "「図形の塗りつぶし」の▼から色を選びます。", expect: "small" },
+      { text: "図形をドラッグして中央付近に配置する",
+        hint: "中央に近づくと赤い点線のガイドが出ます。", expect: "small" },
     ],
   },
   "design-theme": {
     name: "見やすいデザインテーマ",
-    goal: "デザインタブでテーマを切り替え、スライド全体の印象を整える。",
     steps: [
-      "リボンの「デザイン」タブに切り替える",
-      "テーマ一覧から候補を1つ選んで適用する",
-      "別のテーマもプレビューして比較する",
-      "最終的に使うテーマを1つに決める",
+      { text: "リボンの「デザイン」タブに切り替える",
+        hint: "「挿入」の右隣あたりにあります。", expect: "small" },
+      { text: "テーマ一覧から1つ選んで適用する",
+        hint: "クリックするとスライド全体のデザインが変わります。", expect: "medium" },
+      { text: "別のテーマも適用して見比べる",
+        hint: "気に入らなければ元のテーマに戻してもOKです。", expect: "medium" },
+      { text: "使うテーマを1つに決める",
+        hint: "決まったら「できた」または「次へ」を押してください。", expect: "any" },
     ],
   },
 };
+
+const EXPECT_LEVEL = { any: 0, small: 1, medium: 2, large: 3 };
+const BAND_NAME = ["", "小", "中", "大"];
+const EXPECT_LABEL = {
+  any: "どんな画面変化でも確認します",
+  small: "小さな変化（クリック・入力）で確認します",
+  medium: "中以上の変化（新しいスライド・テーマなど）で確認します",
+  large: "大きな変化（レイアウト変更）で確認します",
+};
+
+// ─── Change detection (capture-test.html と同じ) ──────
+const GRID_W = 64, GRID_H = 36;   // 変化検出用の縮小グリッド
+const PIXEL_DIFF = 18;            // 1セルを「変化あり」とみなす輝度差 (0-255)
+const STABLE_MAX = 0.1;           // 前回サンプルとの差がこれ未満なら「操作が落ち着いた」(%)
+const THRESHOLD = 0.15;           // 確定画面との差がこれ以上なら「変化あり」(%)
+const BAND_MEDIUM = 3, BAND_LARGE = 20;
+const INTERVAL_MS = 1500;
+const MAX_LOG = 8;
+
+function bandOf(ratio) { return ratio >= BAND_LARGE ? 3 : ratio >= BAND_MEDIUM ? 2 : 1; }
 
 // ─── State ────────────────────────────────────────────
 const state = {
   lessonId: "first-slide",
   step: 0,
   stream: null,
-  video: null,
-  captureCanvas: document.createElement("canvas"),
-  intervalMs: 4000,
+  imageCapture: null,
+  timer: null,          // { host, id }
   paused: false,
-  analyzing: false,
-  frameCount: 0,
-  lastFrameHash: null,
-  timer: null,
-  overlayEnabled: true,
+  prevGray: null,
+  baseGray: null,
+  changes: 0,
+  noticeUntil: 0,       // この時刻までは見守り表示で上書きしない
+  pip: null,
 };
 
-// ─── DOM refs ─────────────────────────────────────────
+// ─── DOM refs（ミニ窓へ移動しても使えるよう起動時に取得） ─
 const $ = (s) => document.querySelector(s);
-const messagesEl = $("#messages");
-const videoEl = $("#captureVideo");
-const emptyEl = $("#emptyState");
-const captureChip = $("#captureChip");
-const targetBox = $("#targetBox");
-const targetLabel = $("#targetLabel");
-const captureStage = $("#captureStage");
+const el = Object.fromEntries([
+  "captureChip", "lessonSelect", "pipBtn", "themeToggle", "emptyState", "captureVideo",
+  "startCaptureBtn", "stopCaptureBtn", "pauseBtn", "statMotion", "statNet", "statChanges",
+  "tutorHome", "tutorHomeNote", "tutor", "tutorLessonName", "tutorStatus",
+  "progressTitle", "progressCount", "progressFill", "stepCard", "stepNum", "stepText",
+  "stepHint", "expectChip", "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
+  "watch", "log", "backBtn", "restartBtn", "nextBtn",
+].map((id) => [id, document.getElementById(id)]));
 
-// ─── API key persistence ─────────────────────────────
-function getApiKey() { return localStorage.getItem("gemini_api_key") || ""; }
-function setApiKey(k) { localStorage.setItem("gemini_api_key", k); }
+const gridCanvas = document.createElement("canvas");
+gridCanvas.width = GRID_W; gridCanvas.height = GRID_H;
+const gridCtx = gridCanvas.getContext("2d", { willReadFrequently: true });
 
-// ─── Setup dialog ────────────────────────────────────
-function openSetup() {
-  $("#apiKeyInput").value = getApiKey();
-  $("#setupDialog").hidden = false;
-  setTimeout(() => $("#apiKeyInput").focus(), 60);
+// ─── Lessons UI ──────────────────────────────────────
+for (const [id, lesson] of Object.entries(LESSONS)) {
+  el.lessonSelect.append(new Option(lesson.name, id));
 }
-function closeSetup() { $("#setupDialog").hidden = true; }
-$("#settingsBtn").addEventListener("click", openSetup);
-$("#setupCancel").addEventListener("click", closeSetup);
-$("#setupSave").addEventListener("click", () => {
-  const k = $("#apiKeyInput").value.trim();
-  if (k.length < 20) { alert("APIキーが短すぎるようです。"); return; }
-  setApiKey(k);
-  closeSetup();
-  addMessage({ kind: "success", title: "設定保存", body: "APIキーを保存しました。画面共有を開始してください。" });
+
+function lesson() { return LESSONS[state.lessonId]; }
+function currentStep() { return lesson().steps[state.step]; }
+
+function render() {
+  const { name, steps } = lesson();
+  const total = steps.length;
+  const done = Math.min(state.step, total);
+  const finished = state.step >= total;
+
+  el.tutorLessonName.textContent = `レッスン: ${name}`;
+  el.progressCount.textContent = `${done} / ${total}`;
+  el.progressFill.style.width = `${(done / total) * 100}%`;
+  el.progressTitle.textContent = finished ? "完了" : `ステップ ${state.step + 1}`;
+
+  el.stepCard.hidden = finished;
+  el.doneCard.hidden = !finished;
+  if (!finished) {
+    const step = currentStep();
+    el.stepNum.textContent = `STEP ${state.step + 1} / ${total}`;
+    el.stepText.textContent = step.text;
+    el.stepHint.textContent = step.hint;
+    el.expectChip.textContent = EXPECT_LABEL[step.expect];
+  }
+  el.backBtn.disabled = state.step === 0;
+  el.nextBtn.textContent = finished ? "次のレッスン →" : "次へ →";
+}
+
+function loadLesson(id) {
+  state.lessonId = id;
+  state.step = 0;
+  el.lessonSelect.value = id;
+  hideConfirm();
+  resetBase();
+  addLog(`レッスン開始: ${lesson().name}`);
+  render();
+}
+
+function goTo(step) {
+  state.step = Math.max(0, Math.min(step, lesson().steps.length));
+  hideConfirm();
+  resetBase();
+  render();
+  if (state.step >= lesson().steps.length) addLog("レッスン完了 🎉");
+  if (state.stream && !state.paused) setWatch("見守り中 — 操作してみてください");
+}
+
+// 今の画面を新しい基準にする（ステップ移動時）
+function resetBase() { state.baseGray = state.prevGray; }
+
+// ─── Confirm prompt ──────────────────────────────────
+function showConfirm(net, band) {
+  el.confirmText.textContent =
+    `画面が変わりました（${BAND_NAME[band]}・${net.toFixed(2)}%）。このステップはできましたか？`;
+  el.confirmBox.hidden = false;
+}
+function hideConfirm() { el.confirmBox.hidden = true; }
+
+el.yesBtn.addEventListener("click", () => {
+  addLog(`✓ ステップ ${state.step + 1} 完了`);
+  goTo(state.step + 1);
+});
+el.notYetBtn.addEventListener("click", () => {
+  hideConfirm();
+  addLog("まだ — 引き続き見守ります");
 });
 
-// ─── Theme ────────────────────────────────────────────
-$("#themeToggle").addEventListener("click", () => {
-  const cur = document.documentElement.getAttribute("data-theme");
-  const next = cur === "dark" ? "light" : cur === "light" ? "dark"
-    : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
-  document.documentElement.setAttribute("data-theme", next);
+// ─── Buttons ─────────────────────────────────────────
+el.lessonSelect.addEventListener("change", (e) => loadLesson(e.target.value));
+el.backBtn.addEventListener("click", () => goTo(state.step - 1));
+el.restartBtn.addEventListener("click", () => loadLesson(state.lessonId));
+el.nextBtn.addEventListener("click", () => {
+  if (state.step >= lesson().steps.length) {
+    const ids = Object.keys(LESSONS);
+    loadLesson(ids[(ids.indexOf(state.lessonId) + 1) % ids.length]);
+    return;
+  }
+  addLog(`→ ステップ ${state.step + 1} をスキップ`);
+  goTo(state.step + 1);
 });
 
-// ─── Screen capture ───────────────────────────────────
-$("#startCaptureBtn").addEventListener("click", startCapture);
-$("#stopCaptureBtn").addEventListener("click", stopCapture);
-$("#pauseBtn").addEventListener("click", togglePause);
+// ─── Log / status ────────────────────────────────────
+function addLog(text) {
+  const li = document.createElement("li");
+  const time = document.createElement("time");
+  time.textContent = new Date().toLocaleTimeString().slice(0, -3);
+  li.append(time, text);
+  el.log.prepend(li);
+  while (el.log.children.length > MAX_LOG) el.log.lastChild.remove();
+}
+function setWatch(text, cls = "on") {
+  el.watch.textContent = text;
+  el.watch.className = "watch " + cls;
+}
+function setStatus(text) { el.tutorStatus.textContent = text; }
+
+// ─── Screen capture ──────────────────────────────────
+el.startCaptureBtn.addEventListener("click", startCapture);
+el.stopCaptureBtn.addEventListener("click", stopCapture);
+el.pauseBtn.addEventListener("click", togglePause);
 
 async function startCapture() {
-  if (!getApiKey()) { openSetup(); return; }
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: 2 },
+      video: { displaySurface: "window", frameRate: 5 },
       audio: false,
     });
     state.stream = stream;
-    videoEl.srcObject = stream;
-    videoEl.hidden = false;
-    emptyEl.hidden = true;
-    $("#stopCaptureBtn").hidden = false;
-    $("#pauseBtn").hidden = false;
-    captureChip.textContent = "共有中";
-    captureChip.classList.add("on");
-
-    // Stop button in browser
-    stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
-
-    await videoEl.play();
-    loadLesson(state.lessonId, /*firstMessage*/ true);
-    scheduleAnalysis(1500);
+    const track = stream.getVideoTracks()[0];
+    track.addEventListener("ended", stopCapture);
+    // ImageCapture はタブが裏に回っても（video が描画されなくても）フレームを取れる
+    state.imageCapture = "ImageCapture" in window ? new ImageCapture(track) : null;
+    el.captureVideo.srcObject = stream;
+    el.captureVideo.hidden = false;
+    el.emptyState.hidden = true;
+    el.stopCaptureBtn.hidden = false;
+    el.pauseBtn.hidden = false;
+    el.captureChip.textContent = "共有中";
+    el.captureChip.classList.add("on");
+    await el.captureVideo.play();
+    state.prevGray = null;
+    state.baseGray = null;
+    setStatus("見守り中");
+    addLog(`共有開始: ${track.label || "ウインドウ"}`);
+    schedule(500);
   } catch (e) {
-    console.warn(e);
-    if (e.name === "NotAllowedError") {
-      addMessage({ kind: "error", title: "共有がキャンセルされました", body: "「画面共有を開始」からもう一度お試しください。" });
-    } else {
-      addMessage({ kind: "error", title: "画面共有エラー", body: e.message });
-    }
+    const msg = e.name === "NotAllowedError"
+      ? "共有がキャンセルされたか、macOS の画面収録が許可されていません。"
+      : `${e.name}: ${e.message}`;
+    setWatch(msg, "small");
   }
 }
 
 function stopCapture() {
-  if (state.stream) {
-    state.stream.getTracks().forEach((t) => t.stop());
-    state.stream = null;
-  }
-  videoEl.srcObject = null;
-  videoEl.hidden = true;
-  emptyEl.hidden = false;
-  $("#stopCaptureBtn").hidden = true;
-  $("#pauseBtn").hidden = true;
-  captureChip.textContent = "未共有";
-  captureChip.classList.remove("on");
-  clearTimeout(state.timer);
-  hideTarget();
-  setTutorStatus("待機中");
+  clearSchedule();
+  state.stream?.getTracks().forEach((t) => t.stop());
+  state.stream = null;
+  state.imageCapture = null;
+  el.captureVideo.srcObject = null;
+  el.captureVideo.hidden = true;
+  el.emptyState.hidden = false;
+  el.stopCaptureBtn.hidden = true;
+  el.pauseBtn.hidden = true;
+  el.captureChip.textContent = "未共有";
+  el.captureChip.classList.remove("on");
+  hideConfirm();
+  setStatus("共有待ち");
+  setWatch("画面共有を開始すると、変化を見守ります。", "");
 }
 
 function togglePause() {
   state.paused = !state.paused;
-  $("#pauseBtn").textContent = state.paused ? "▶ 再開" : "⏸ 一時停止";
+  el.pauseBtn.textContent = state.paused ? "▶ 再開" : "⏸ 一時停止";
   if (state.paused) {
-    clearTimeout(state.timer);
-    setTutorStatus("一時停止");
+    clearSchedule();
+    setStatus("一時停止");
+    setWatch("一時停止中", "");
   } else {
-    scheduleAnalysis(500);
+    state.prevGray = null;
+    setStatus("見守り中");
+    schedule(300);
   }
 }
 
-// ─── Frame extraction ────────────────────────────────
-function grabFrame() {
-  if (!videoEl.videoWidth) return null;
-  const w = videoEl.videoWidth, h = videoEl.videoHeight;
-  // Downscale so max side is 1280 (Gemini works fine)
-  const maxSide = 1280;
-  const scale = Math.min(1, maxSide / Math.max(w, h));
-  const cw = Math.round(w * scale);
-  const ch = Math.round(h * scale);
-  state.captureCanvas.width = cw;
-  state.captureCanvas.height = ch;
-  const ctx = state.captureCanvas.getContext("2d");
-  ctx.drawImage(videoEl, 0, 0, cw, ch);
-  return state.captureCanvas.toDataURL("image/jpeg", 0.72);
+// ミニ窓が開いている間はそちらのタイマーを使う（裏のタブはタイマーが間引かれるため）
+function schedule(delay = INTERVAL_MS) {
+  clearSchedule();
+  const host = state.pip && !state.pip.closed ? state.pip : window;
+  state.timer = { host, id: host.setTimeout(sample, delay) };
+}
+function clearSchedule() {
+  if (state.timer) state.timer.host.clearTimeout(state.timer.id);
+  state.timer = null;
 }
 
-function frameHash(dataUrl) {
-  // Cheap hash: length + a few sampled chars
-  const s = dataUrl;
-  let h = 0;
-  for (let i = 0; i < s.length; i += 4096) h = (h * 33 + s.charCodeAt(i)) | 0;
-  return `${s.length}:${h}`;
-}
-
-// ─── Gemini call ─────────────────────────────────────
-const SYSTEM_PROMPT = `あなたは PowerPoint の使い方を日本語で1手ずつ教えるチューターです。
-ユーザーの実画面のスクリーンショットと、レッスンの目標・全ステップ・
-現在案内中のステップ番号を与えます。あなたの仕事:
-
-1. 画面が今どういう状態か1文で判定
-2. 現在ステップが完了しているか判定
-3. 完了していなければ次にすべき「一手」を短く指示
-4. 迷いそうな部分に短いヒント
-5. 押すべき場所が画像内で特定できれば正規化座標を返す
-
-以下の JSON のみ、余計な文字を付けず返してください:
-
-{
-  "screen_state": "<画面状態を1文>",
-  "current_step_done": true|false,
-  "guidance": "<次にすべき一手（1〜2文）>",
-  "hint": "<補足があれば1文、なければ空文字>",
-  "confidence": <0.0〜1.0>,
-  "lesson_complete": true|false,
-  "target_bbox": {"x":<0-1>,"y":<0-1>,"w":<0-1>,"h":<0-1>} or null,
-  "target_label": "<何を指しているか短く>"
-}
-target_bbox は自信がある時だけ返し、不明なら null。`;
-
-async function callGemini(dataUrl, lesson, stepIndex) {
-  const key = getApiKey();
-  if (!key) throw new Error("APIキーが未設定です");
-  const base64 = dataUrl.split(",")[1];
-  const stepsTxt = lesson.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
-  const userText = `${SYSTEM_PROMPT}
-
-レッスン名: ${lesson.name}
-目標: ${lesson.goal}
-全ステップ:
-${stepsTxt}
-
-現在案内中のステップ番号: ${stepIndex + 1}
-JSONのみを返答してください。`;
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
-  const body = {
-    contents: [{
-      parts: [
-        { text: userText },
-        { inline_data: { mime_type: "image/jpeg", data: base64 } },
-      ],
-    }],
-    generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-  };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`HTTP ${res.status}: ${t.slice(0, 200)}`);
+async function grabGray() {
+  let source = el.captureVideo;
+  let bitmap = null;
+  if (state.imageCapture) {
+    try { bitmap = await state.imageCapture.grabFrame(); source = bitmap; } catch { /* video にフォールバック */ }
   }
-  const payload = await res.json();
-  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-  return JSON.parse(text);
+  if (!bitmap && !el.captureVideo.videoWidth) return null;
+  gridCtx.drawImage(source, 0, 0, GRID_W, GRID_H);
+  bitmap?.close();
+  const px = gridCtx.getImageData(0, 0, GRID_W, GRID_H).data;
+  const gray = new Uint8Array(GRID_W * GRID_H);
+  for (let i = 0; i < gray.length; i++) {
+    gray[i] = (px[i * 4] * 299 + px[i * 4 + 1] * 587 + px[i * 4 + 2] * 114) / 1000;
+  }
+  return gray;
 }
 
-// ─── Analysis loop ───────────────────────────────────
-function scheduleAnalysis(delay) {
-  clearTimeout(state.timer);
-  state.timer = setTimeout(analyzeOnce, delay);
+function diffRatio(a, b) {
+  let changed = 0;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > PIXEL_DIFF) changed++;
+  return (changed / a.length) * 100;
 }
 
-async function analyzeOnce() {
-  if (!state.stream || state.paused || state.analyzing) return;
-  const dataUrl = grabFrame();
-  if (!dataUrl) { scheduleAnalysis(1000); return; }
+// 動きが止まるのを待ってから、最後に確定した画面と比べる
+async function sample() {
+  if (!state.stream || state.paused) return;
+  const gray = await grabGray();
+  if (!state.stream || state.paused) return;
+  if (!gray) { schedule(500); return; }
 
-  const h = frameHash(dataUrl);
-  if (h === state.lastFrameHash) {
-    setTutorStatus("画面変化なし");
-    scheduleAnalysis(state.intervalMs);
+  const motion = state.prevGray ? diffRatio(gray, state.prevGray) : 0;
+  state.prevGray = gray;
+  if (!state.baseGray) {
+    state.baseGray = gray;
+    setWatch("画面を記録しました。操作を待っています。");
+    schedule();
     return;
   }
-  state.lastFrameHash = h;
+  const net = diffRatio(gray, state.baseGray);
+  el.statMotion.textContent = `動き ${motion.toFixed(2)}%`;
+  el.statNet.textContent = `差 ${net.toFixed(2)}%`;
 
-  const lesson = LESSONS[state.lessonId];
-  if (state.step >= lesson.steps.length) {
-    scheduleAnalysis(state.intervalMs);
-    return;
+  if (motion >= STABLE_MAX) {
+    setWatch("変化中… 操作が落ち着くのを待っています", "moving");
+  } else if (net >= THRESHOLD) {
+    state.baseGray = gray;
+    onChange(net, bandOf(net));
+  } else if (el.confirmBox.hidden && Date.now() > state.noticeUntil) {
+    setWatch("見守り中 — 操作してみてください");
   }
-
-  state.analyzing = true;
-  setTutorStatus("解析中…");
-  try {
-    const data = await callGemini(dataUrl, lesson, state.step);
-    state.frameCount += 1;
-    $("#statFrames").textContent = `解析 ${state.frameCount} 回`;
-    $("#statLast").textContent = `最終: ${new Date().toLocaleTimeString()}`;
-
-    handleGuidance(data);
-    setTutorStatus("監視中");
-  } catch (e) {
-    console.error(e);
-    addMessage({ kind: "error", title: "AIエラー", body: String(e.message || e) });
-    setTutorStatus("エラー");
-  } finally {
-    state.analyzing = false;
-    scheduleAnalysis(state.intervalMs);
-  }
+  schedule();
 }
 
-function handleGuidance(d) {
-  const guidance = d.guidance || "";
-  const hint = d.hint || "";
-  const screenState = d.screen_state || "";
-  const label = d.target_label || "";
-
-  addMessage({
-    kind: d.current_step_done ? "success" : "ai",
-    title: d.current_step_done ? "できました" : `ステップ ${state.step + 1} / ${LESSONS[state.lessonId].steps.length}`,
-    body: guidance + (hint ? `<br><em style="color:var(--warn)">💡 ${hint}</em>` : "") +
-          (screenState ? `<div class="screen-state">画面: ${escapeHtml(screenState)}</div>` : ""),
-  });
-
-  // Target overlay
-  if (d.target_bbox && !d.current_step_done && !d.lesson_complete && state.overlayEnabled) {
-    showTarget(d.target_bbox, label);
+function onChange(net, band) {
+  state.changes++;
+  el.statChanges.textContent = `変化 ${state.changes} 回`;
+  addLog(`変化 ${BAND_NAME[band]} ${net.toFixed(2)}%`);
+  const step = currentStep();
+  if (!step) return;
+  const need = EXPECT_LEVEL[step.expect];
+  if (band >= need) {
+    showConfirm(net, band);
+    setWatch("確認待ち");
   } else {
-    hideTarget();
-  }
-
-  if (d.lesson_complete) {
-    completeLesson();
-  } else if (d.current_step_done) {
-    state.step += 1;
-    updateProgress();
-    if (state.step >= LESSONS[state.lessonId].steps.length) completeLesson();
+    setWatch(`変化（${BAND_NAME[band]}・${net.toFixed(2)}%）がありました。このステップは「${BAND_NAME[need]}」以上の変化を待っています。`, "small");
+    state.noticeUntil = Date.now() + 8000;
   }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+// ─── Mini window (Document Picture-in-Picture) ───────
+if (!("documentPictureInPicture" in window)) {
+  el.pipBtn.disabled = true;
+  el.pipBtn.title = "このブラウザはミニ窓に対応していません（Chrome 116 以降で使えます）";
 }
+el.pipBtn.addEventListener("click", togglePip);
 
-// ─── Target overlay (on video preview) ───────────────
-function showTarget(bbox, label) {
-  const rect = videoEl.getBoundingClientRect();
-  const stageRect = captureStage.getBoundingClientRect();
-  // video is displayed within stage; getBoundingClientRect gives displayed size (may be letterboxed)
-  const vw = rect.width, vh = rect.height;
-  const left = rect.left - stageRect.left + bbox.x * vw;
-  const top  = rect.top  - stageRect.top  + bbox.y * vh;
-  const w    = Math.max(24, bbox.w * vw);
-  const h    = Math.max(24, bbox.h * vh);
-  Object.assign(targetBox.style, {
-    left: left + "px", top: top + "px", width: w + "px", height: h + "px",
-  });
-  targetBox.classList.add("on");
+async function togglePip() {
+  if (state.pip) { state.pip.close(); return; }
+  const pip = await documentPictureInPicture.requestWindow({ width: 380, height: 540 });
+  pip.document.title = "スライド先生";
+  document.querySelectorAll("style, link[rel=stylesheet]").forEach((n) => pip.document.head.append(n.cloneNode(true)));
+  syncTheme(pip.document);
+  pip.document.body.classList.add("pip");
+  pip.document.body.append(el.tutor);
+  el.tutorHomeNote.hidden = false;
+  el.pipBtn.textContent = "📌 ミニ窓を閉じる";
+  state.pip = pip;
+  if (state.stream && !state.paused) schedule();
 
-  targetLabel.textContent = label || "ここをクリック";
-  targetLabel.classList.add("on");
-  // Position label just above the box (or below if not enough room)
-  const labelTop = top - 30;
-  Object.assign(targetLabel.style, {
-    left: left + "px",
-    top: (labelTop < 0 ? top + h + 6 : labelTop) + "px",
+  pip.addEventListener("pagehide", () => {
+    el.tutorHome.append(el.tutor);
+    el.tutorHomeNote.hidden = true;
+    el.pipBtn.textContent = "📌 ミニ窓で表示";
+    state.pip = null;
+    if (state.stream && !state.paused) schedule();
   });
 }
-function hideTarget() {
-  targetBox.classList.remove("on");
-  targetLabel.classList.remove("on");
-}
-window.addEventListener("resize", hideTarget);
 
-// ─── Messages / progress ─────────────────────────────
-function addMessage({ kind = "ai", title = "", body = "" } = {}) {
-  const el = document.createElement("div");
-  el.className = "msg " + kind;
-  const avatar = kind === "success" ? "✓" : kind === "hint" ? "!" : kind === "error" ? "×" : "AI";
-  el.innerHTML = `
-    <div class="msg-avatar">${avatar}</div>
-    <div class="msg-bubble">
-      ${title ? `<div class="step-title">${escapeHtml(title)}</div>` : ""}
-      <div>${body}</div>
-    </div>`;
-  messagesEl.appendChild(el);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function setTutorStatus(t) { $("#tutorStatus").textContent = t; }
-
-function updateProgress() {
-  const lesson = LESSONS[state.lessonId];
-  const total = lesson.steps.length;
-  const done = Math.min(state.step, total);
-  $("#progressCount").textContent = `${done} / ${total}`;
-  $("#progressFill").style.width = `${(done / total) * 100}%`;
-  $("#progressStepTitle").textContent = state.step < total ? lesson.steps[state.step] : "レッスン完了 🎉";
-}
-
-function completeLesson() {
-  const lesson = LESSONS[state.lessonId];
-  state.step = lesson.steps.length;
-  updateProgress();
-  hideTarget();
-  addMessage({ kind: "success", title: `${lesson.name} 完了！`, body: "お疲れさまでした。他のレッスンも試してみてください。" });
-}
-
-// ─── Lesson loader ───────────────────────────────────
-function loadLesson(id, firstMessage) {
-  state.lessonId = id;
-  state.step = 0;
-  state.lastFrameHash = null;
-  const lesson = LESSONS[id];
-  $("#tutorLessonName").textContent = `レッスン: ${lesson.name}`;
-  updateProgress();
-  if (firstMessage) {
-    messagesEl.innerHTML = "";
-    addMessage({ kind: "ai", title: "はじめに",
-      body: `${lesson.name} を始めます。PowerPointをフォアグラウンドにしたまま、画面の指示に従って操作してください。` });
-    addMessage({ kind: "ai", title: `ステップ 1 / ${lesson.steps.length}`,
-      body: escapeHtml(lesson.steps[0]) });
+// ミニ窓なしでこのタブが裏に回ると、タイマーが間引かれて見守りが遅れる
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && state.stream && !state.pip) {
+    addLog("⚠ ブラウザが裏に回りました。ミニ窓で表示すると確実に見守れます");
   }
-}
+});
 
-// ─── Buttons ─────────────────────────────────────────
-$("#lessonSelect").addEventListener("change", (e) => {
-  loadLesson(e.target.value, true);
-  if (state.stream) scheduleAnalysis(500);
-});
-$("#hintBtn").addEventListener("click", () => {
-  const lesson = LESSONS[state.lessonId];
-  if (state.step >= lesson.steps.length) return;
-  addMessage({ kind: "hint", title: "ヒント", body: escapeHtml(lesson.steps[state.step]) });
-});
-$("#restartBtn").addEventListener("click", () => {
-  loadLesson(state.lessonId, true);
-  if (state.stream) scheduleAnalysis(500);
-});
-$("#nextBtn").addEventListener("click", () => {
-  const lesson = LESSONS[state.lessonId];
-  if (state.step >= lesson.steps.length) {
-    const ids = Object.keys(LESSONS);
-    const nextIdx = (ids.indexOf(state.lessonId) + 1) % ids.length;
-    $("#lessonSelect").value = ids[nextIdx];
-    loadLesson(ids[nextIdx], true);
-    return;
-  }
-  state.step += 1;
-  updateProgress();
-  if (state.step >= lesson.steps.length) completeLesson();
-  else addMessage({ kind: "ai", title: `ステップ ${state.step + 1} / ${lesson.steps.length}`,
-    body: escapeHtml(lesson.steps[state.step]) });
-  if (state.stream) scheduleAnalysis(500);
+// ─── Theme ────────────────────────────────────────────
+function syncTheme(doc) {
+  const t = document.documentElement.getAttribute("data-theme");
+  if (t) doc.documentElement.setAttribute("data-theme", t);
+}
+el.themeToggle.addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : cur === "light" ? "dark"
+    : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
+  document.documentElement.setAttribute("data-theme", next);
+  if (state.pip) syncTheme(state.pip.document);
 });
 
 // ─── Boot ────────────────────────────────────────────
-loadLesson(state.lessonId, true);
-if (!getApiKey()) setTimeout(openSetup, 400);
+loadLesson(state.lessonId);
 </script>
+</body>
+</html>
