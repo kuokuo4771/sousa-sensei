@@ -150,20 +150,28 @@
         </div>
         <label class="row"><span>取得間隔 <b id="intervalVal">1.5 秒</b></span>
           <input type="range" id="interval" min="0.5" max="10" step="0.5" value="1.5"></label>
-        <label class="row"><span>変化とみなす閾値 <b id="thresholdVal">0.15 %</b></span>
-          <input type="range" id="threshold" min="0.05" max="3" step="0.05" value="0.15"></label>
+        <label class="row"><span>変化とみなす閾値 <b id="thresholdVal">0.05 %</b></span>
+          <input type="range" id="threshold" min="0.01" max="3" step="0.01" value="0.05"></label>
+        <label class="row"><span>カーソルとみなす小さな塊 <b id="cursorCellsVal">14 マス以下</b></span>
+          <input type="range" id="cursorCells" min="0" max="40" step="1" value="14"></label>
         <label class="row"><span>送信用の長辺 <b id="maxSideVal">1024 px</b></span>
           <input type="range" id="maxSide" min="512" max="1920" step="128" value="1024"></label>
         <div style="font-size:12px; display:flex; justify-content:space-between;">
-          <span>動き（前回サンプルとの差）</span><b id="motionVal" style="font-family:var(--mono)">—</b></div>
+          <span>差の増減（前回サンプルから）</span><b id="growthVal" style="font-family:var(--mono)">—</b></div>
+        <div style="font-size:12px; display:flex; justify-content:space-between; color:var(--muted);">
+          <span>動き（参考・前回サンプルとの差）</span><b id="motionVal" style="font-family:var(--mono); font-weight:500">—</b></div>
         <div style="font-size:12px; display:flex; justify-content:space-between;">
           <span>確定画面との差</span><b id="diffVal" style="font-family:var(--mono)">—</b></div>
+        <div style="font-size:12px; display:flex; justify-content:space-between; color:var(--muted);">
+          <span>└ カーソル除外前</span><b id="diffRaw" style="font-family:var(--mono); font-weight:500">—</b></div>
         <div class="meter"><i id="diffBar"></i><u id="thrMark"></u></div>
-        <canvas id="diffCanvas" width="64" height="36" title="白いほど確定画面から変化した領域"></canvas>
-        <p class="note">動きが 0.1% 未満になる（操作が落ち着く）のを待ってから、最後に送信した画面と比べます。
-          カーソルや虫眼鏡・ツールチップが消えていれば差に残りません。
+        <canvas id="diffCanvas" width="192" height="108" title="白=数えた変化 / 赤=カーソルとして無視"></canvas>
+        <p class="note">最後に送信した画面との差が増減しなくなる（増減 0.05% 未満）のを待ってから判定します。
+          カーソルのような小さな変化の塊は無視するので、カーソルを動かすだけでは「変化中」になりません。
+          虫眼鏡・ツールチップは消えれば差に残りません。
           大きさの目安：小 &lt;3%（入力・クリック）／中 3〜20%（新しいスライド・メニュー）／大 ≥20%（レイアウト変更）。
-          ヒートマップの白い部分が、確定画面から変わった領域です。</p>
+          ヒートマップ：白＝数えた変化、赤＝小さな塊なのでカーソルとして無視した変化。
+          1マスはウインドウを横192×縦108に分けた1区画です。</p>
       </div>
     </div>
   </aside>
@@ -174,15 +182,15 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const video = $("#video");
-const GRID_W = 64, GRID_H = 36;       // 変化検出用の縮小グリッド
+const GRID_W = 192, GRID_H = 108;     // 変化検出用の縮小グリッド（文字入力とカーソルを見分けられる細かさ）
 const PIXEL_DIFF = 18;                // 1セルを「変化あり」とみなす輝度差 (0-255)
 const MAX_LOG = 24;
-const STABLE_MAX = 0.1;               // 前回サンプルとの差がこれ未満なら「操作が落ち着いた」(%)
+const STABLE_MAX = 0.05;              // 確定画面との差の増減がこれ未満なら「操作が落ち着いた」(%)
 const BAND_MEDIUM = 3;                // これ以上は「中」: 新しいスライド、メニュー (%)
 const BAND_LARGE = 20;                // これ以上は「大」: レイアウト変更、ダイアログ (%)
 
 const state = {
-  stream: null, timer: null, prevGray: null, baseGray: null,
+  stream: null, timer: null, prevGray: null, baseGray: null, prevNet: 0,
   sampled: 0, send: 0, moving: 0, skip: 0,
   recorder: null, chunks: [],
 };
@@ -212,10 +220,11 @@ function sliderVal(id) { return parseFloat($("#" + id).value); }
 function syncLabels() {
   $("#intervalVal").textContent = sliderVal("interval").toFixed(1) + " 秒";
   $("#thresholdVal").textContent = sliderVal("threshold").toFixed(2) + " %";
+  $("#cursorCellsVal").textContent = sliderVal("cursorCells") === 0 ? "無視しない" : sliderVal("cursorCells") + " マス以下";
   $("#maxSideVal").textContent = sliderVal("maxSide") + " px";
   $("#thrMark").style.left = Math.min(100, sliderVal("threshold") * 50) + "%";
 }
-["interval", "threshold", "maxSide"].forEach((id) =>
+["interval", "threshold", "maxSide", "cursorCells"].forEach((id) =>
   $("#" + id).addEventListener("input", () => {
     syncLabels();
     if (id === "interval" && state.stream) schedule(0);
@@ -244,6 +253,7 @@ async function start() {
     showTrackInfo(track);
     state.prevGray = null;
     state.baseGray = null;
+    state.prevNet = 0;
     schedule(500);
   } catch (e) {
     const msg = e.name === "NotAllowedError"
@@ -307,27 +317,54 @@ function toGray() {
   return gray;
 }
 
-// 変化したセルの割合 (%)。heat を渡すとヒートマップも描く
-function diffRatio(a, b, heat) {
-  let changed = 0;
-  for (let i = 0; i < a.length; i++) {
-    const d = Math.abs(a[i] - b[i]);
-    if (d > PIXEL_DIFF) changed++;
-    if (heat) {
-      const v = Math.min(255, d * 4);
-      heat.data.set([v, v, v, 255], i * 4);
+// 変化したセルの割合 (%)。つながった変化セルの塊ごとに数え、
+// スライダーで指定したマス数以下の小さな塊（カーソル・キャレットなど）は filtered から除く。
+// heat を渡すとヒートマップも描く（白=数えた変化 / 赤=カーソルとして無視 / 灰=閾値未満の差）
+function diffStats(a, b, heat) {
+  const n = a.length;
+  const mask = new Uint8Array(n);   // 0: 変化なし, 1: 変化あり(未処理), 2: 数えた, 3: 無視
+  let raw = 0;
+  for (let i = 0; i < n; i++) {
+    if (Math.abs(a[i] - b[i]) > PIXEL_DIFF) { mask[i] = 1; raw++; }
+  }
+  const maxIgnored = sliderVal("cursorCells");
+  let kept = 0;
+  for (let i = 0; i < n; i++) {
+    if (mask[i] !== 1) continue;
+    const blob = [i];
+    mask[i] = 2;
+    for (let q = 0; q < blob.length; q++) {
+      const x = blob[q] % GRID_W, y = (blob[q] / GRID_W) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
+          const k = ny * GRID_W + nx;
+          if (mask[k] === 1) { mask[k] = 2; blob.push(k); }
+        }
+      }
+    }
+    if (blob.length > maxIgnored) kept += blob.length;
+    else for (const k of blob) mask[k] = 3;
+  }
+  if (heat) {
+    for (let i = 0; i < n; i++) {
+      const v = Math.min(255, Math.abs(a[i] - b[i]) * 4) / 3;
+      const rgb = mask[i] === 2 ? [255, 255, 255] : mask[i] === 3 ? [224, 103, 78] : [v, v, v];
+      heat.data.set([...rgb, 255], i * 4);
     }
   }
-  return (changed / a.length) * 100;
+  return { raw: (raw / n) * 100, filtered: (kept / n) * 100 };
 }
 
 function sizeBand(ratio) {
   return ratio >= BAND_LARGE ? "大" : ratio >= BAND_MEDIUM ? "中" : "小";
 }
 
-// 1) 前回サンプルとの差 (motion) が小さい = 操作が落ち着いた
-// 2) 落ち着いた画面を、最後に送信した画面 (base) と比べ、閾値以上なら送信対象
-// → カーソルや虫眼鏡・ツールチップの一時的な表示は、消えれば差に残らない
+// 1) 最後に送信した画面 (base) との差 (net) が、前回サンプルから増減しなくなった = 操作が落ち着いた
+//    カーソルだけ動かしても net はカーソル分でほぼ一定なので「落ち着いた」とみなせる
+// 2) 落ち着いたときの net が閾値以上なら送信対象
+// → 虫眼鏡・ツールチップの一時的な表示は、消えれば差に残らない
 function sample() {
   if (!state.stream) return;
   if (!video.videoWidth) { schedule(500); return; }
@@ -338,17 +375,20 @@ function sample() {
 
   const gray = toGray();
   const isFirst = !state.baseGray;
-  const motion = state.prevGray ? diffRatio(gray, state.prevGray) : 0;
+  const motion = state.prevGray ? diffStats(gray, state.prevGray).filtered : 0;
   state.prevGray = gray;
 
   let net = null;
+  let netRaw = null;
+  let growth = 0;
   if (!isFirst) {
     const heat = diffCtx.createImageData(GRID_W, GRID_H);
-    net = diffRatio(gray, state.baseGray, heat);
+    ({ filtered: net, raw: netRaw } = diffStats(gray, state.baseGray, heat));
     diffCtx.putImageData(heat, 0, 0);
+    growth = Math.abs(net - state.prevNet);
   }
 
-  const settled = motion < STABLE_MAX;
+  const settled = growth < STABLE_MAX;
   let status;
   if (isFirst) status = "send";
   else if (!settled) status = "moving";
@@ -356,6 +396,7 @@ function sample() {
   else status = "skip";
 
   if (status === "send") state.baseGray = gray;
+  state.prevNet = status === "send" ? 0 : net;
   state.sampled++;
   if (status === "send") state.send++;
   else if (status === "moving") state.moving++;
@@ -365,8 +406,10 @@ function sample() {
   $("#sSend").textContent = state.send;
   $("#sMoving").textContent = state.moving;
   $("#sSkip").textContent = state.skip;
-  $("#motionVal").textContent = motion.toFixed(2) + " %" + (settled ? "（安定）" : "（変化中）");
+  $("#growthVal").textContent = growth.toFixed(2) + " %" + (settled ? "（安定）" : "（変化中）");
+  $("#motionVal").textContent = motion.toFixed(2) + " %";
   $("#diffVal").textContent = isFirst ? "初回" : net.toFixed(2) + " %";
+  $("#diffRaw").textContent = isFirst ? "—" : netRaw.toFixed(2) + " %";
   $("#diffBar").style.width = Math.min(100, (net ?? 0) * 50) + "%";
 
   addLog(status, net, motion);

@@ -415,7 +415,7 @@
         <video id="captureVideo" autoplay muted playsinline hidden></video>
       </div>
       <div class="capture-foot">
-        <span class="stat" id="statMotion">動き —</span>
+        <span class="stat" id="statMotion">増減 —</span>
         <span class="sep">·</span>
         <span class="stat" id="statNet">差 —</span>
         <span class="sep">·</span>
@@ -550,10 +550,11 @@ const EXPECT_LABEL = {
 };
 
 // ─── Change detection (capture-test.html と同じ) ──────
-const GRID_W = 64, GRID_H = 36;   // 変化検出用の縮小グリッド
+const GRID_W = 192, GRID_H = 108; // 変化検出用の縮小グリッド（文字入力とカーソルを見分けられる細かさ）
 const PIXEL_DIFF = 18;            // 1セルを「変化あり」とみなす輝度差 (0-255)
-const STABLE_MAX = 0.1;           // 前回サンプルとの差がこれ未満なら「操作が落ち着いた」(%)
-const THRESHOLD = 0.15;           // 確定画面との差がこれ以上なら「変化あり」(%)
+const STABLE_MAX = 0.05;          // 確定画面との差の増減がこれ未満なら「操作が落ち着いた」(%)
+const CURSOR_CELLS = 14;          // これ以下のマス数の小さな変化の塊はカーソルとみなして無視
+const THRESHOLD = 0.05;           // 確定画面との差がこれ以上なら「変化あり」(%)
 const BAND_MEDIUM = 3, BAND_LARGE = 20;
 const INTERVAL_MS = 1500;
 const MAX_LOG = 8;
@@ -570,6 +571,7 @@ const state = {
   paused: false,
   prevGray: null,
   baseGray: null,
+  prevNet: 0,           // 前回サンプル時の「確定画面との差」
   changes: 0,
   noticeUntil: 0,       // この時刻までは見守り表示で上書きしない
   pip: null,
@@ -642,7 +644,7 @@ function goTo(step) {
 }
 
 // 今の画面を新しい基準にする（ステップ移動時）
-function resetBase() { state.baseGray = state.prevGray; }
+function resetBase() { state.baseGray = state.prevGray; state.prevNet = 0; }
 
 // ─── Confirm prompt ──────────────────────────────────
 function showConfirm(net, band) {
@@ -786,10 +788,31 @@ async function grabGray() {
   return gray;
 }
 
+// 変化したセルの割合 (%)。つながった変化セルの塊ごとに数え、
+// CURSOR_CELLS 以下の小さな塊（カーソル・キャレットなど）は数えない
 function diffRatio(a, b) {
-  let changed = 0;
-  for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > PIXEL_DIFF) changed++;
-  return (changed / a.length) * 100;
+  const n = a.length;
+  const mask = new Uint8Array(n);   // 0: 変化なし, 1: 変化あり(未処理), 2: 処理済み
+  for (let i = 0; i < n; i++) if (Math.abs(a[i] - b[i]) > PIXEL_DIFF) mask[i] = 1;
+  let kept = 0;
+  for (let i = 0; i < n; i++) {
+    if (mask[i] !== 1) continue;
+    const blob = [i];
+    mask[i] = 2;
+    for (let q = 0; q < blob.length; q++) {
+      const x = blob[q] % GRID_W, y = (blob[q] / GRID_W) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
+          const k = ny * GRID_W + nx;
+          if (mask[k] === 1) { mask[k] = 2; blob.push(k); }
+        }
+      }
+    }
+    if (blob.length > CURSOR_CELLS) kept += blob.length;
+  }
+  return (kept / n) * 100;
 }
 
 // 動きが止まるのを待ってから、最後に確定した画面と比べる
@@ -799,22 +822,27 @@ async function sample() {
   if (!state.stream || state.paused) return;
   if (!gray) { schedule(500); return; }
 
-  const motion = state.prevGray ? diffRatio(gray, state.prevGray) : 0;
   state.prevGray = gray;
   if (!state.baseGray) {
     state.baseGray = gray;
+    state.prevNet = 0;
     setWatch("画面を記録しました。操作を待っています。");
     schedule();
     return;
   }
+  // 確定画面との差が増減しなくなったら「落ち着いた」とみなす。
+  // カーソルを動かすだけなら差はカーソル分でほぼ一定なので「変化中」にならない
   const net = diffRatio(gray, state.baseGray);
-  el.statMotion.textContent = `動き ${motion.toFixed(2)}%`;
+  const growth = Math.abs(net - state.prevNet);
+  state.prevNet = net;
+  el.statMotion.textContent = `増減 ${growth.toFixed(2)}%`;
   el.statNet.textContent = `差 ${net.toFixed(2)}%`;
 
-  if (motion >= STABLE_MAX) {
+  if (growth >= STABLE_MAX) {
     setWatch("変化中… 操作が落ち着くのを待っています", "moving");
   } else if (net >= THRESHOLD) {
     state.baseGray = gray;
+    state.prevNet = 0;
     onChange(net, bandOf(net));
   } else if (el.confirmBox.hidden && Date.now() > state.noticeUntil) {
     setWatch("見守り中 — 操作してみてください");
