@@ -1,0 +1,913 @@
+<title>スライド先生</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  :root {
+    --ground: #F8F5EE;
+    --panel: #FFFFFF;
+    --panel-alt: #FBF8F1;
+    --ink: #1B1D22;
+    --ink-soft: #3A3E48;
+    --muted: #616874;
+    --border: #E6E1D5;
+    --border-soft: #EFEAE0;
+    --accent: #C0442B;
+    --accent-soft: #F3D9CF;
+    --ai: #2E6BA0;
+    --ai-soft: #E1ECF5;
+    --success: #4E7B4A;
+    --success-soft: #DCE9D3;
+    --warn: #B7791F;
+    --warn-soft: #F5E8CC;
+    --shadow: 0 2px 8px rgba(30, 24, 15, 0.06), 0 1px 2px rgba(30, 24, 15, 0.04);
+    --shadow-lift: 0 12px 40px rgba(20, 15, 5, 0.12);
+    --font-ui: "Inter", "Noto Sans JP", system-ui, sans-serif;
+    --font-ja: "Noto Sans JP", "Inter", system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --ground: #16181C; --panel: #1E2126; --panel-alt: #22262C;
+      --ink: #F1EEE5; --ink-soft: #D6D1C4; --muted: #9199A4;
+      --border: #2E333B; --border-soft: #262A31;
+      --accent: #E36A50; --accent-soft: #3B241E;
+      --ai: #6AA6D9; --ai-soft: #1E2C3B;
+      --success: #8CB782; --success-soft: #223022;
+      --warn: #D4A24C; --warn-soft: #3B2D1A;
+      --shadow: 0 2px 8px rgba(0,0,0,0.4);
+      --shadow-lift: 0 12px 40px rgba(0,0,0,0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #16181C; --panel: #1E2126; --panel-alt: #22262C;
+    --ink: #F1EEE5; --ink-soft: #D6D1C4; --muted: #9199A4;
+    --border: #2E333B; --border-soft: #262A31;
+    --accent: #E36A50; --accent-soft: #3B241E;
+    --ai: #6AA6D9; --ai-soft: #1E2C3B;
+    --success: #8CB782; --success-soft: #223022;
+    --warn: #D4A24C; --warn-soft: #3B2D1A;
+    --shadow: 0 2px 8px rgba(0,0,0,0.4);
+    --shadow-lift: 0 12px 40px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--font-ja); font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  .app { height: 100vh; display: grid; grid-template-rows: auto 1fr; min-height: 640px; }
+
+  /* ─── Top bar ───────────────────────────────────── */
+  .topbar {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--font-ui); font-weight: 700; font-size: 16px;
+    letter-spacing: -0.01em;
+  }
+  .brand-mark {
+    width: 26px; height: 26px; display: grid; place-items: center;
+    background: var(--accent); color: white; border-radius: 6px;
+    font-weight: 700; font-size: 13px;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.15);
+  }
+  .brand-sub {
+    font-family: var(--font-ja); font-weight: 500;
+    color: var(--muted); font-size: 12px; margin-left: 4px;
+  }
+  .topbar-spacer { flex: 1; }
+  .capture-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; padding: 6px 12px;
+    border-radius: 999px; font-weight: 500;
+    background: var(--warn-soft); color: var(--warn);
+  }
+  .capture-chip::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--warn);
+  }
+  .capture-chip.on { background: var(--success-soft); color: var(--success); }
+  .capture-chip.on::before {
+    background: var(--success);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--success) 25%, transparent);
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse-dot { 0%,100% { opacity: 0.6 } 50% { opacity: 1 } }
+
+  .lesson-picker {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-alt); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 6px 4px 14px;
+  }
+  .lesson-picker label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    font-family: var(--font-ui);
+  }
+  .lesson-picker select {
+    appearance: none; background: transparent; border: 0;
+    color: var(--ink); font: inherit; font-weight: 500;
+    padding: 6px 28px 6px 8px;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: right 12px top 14px, right 8px top 14px;
+    background-size: 4px 4px, 4px 4px; background-repeat: no-repeat;
+  }
+  .icon-btn {
+    background: transparent; border: 1px solid var(--border);
+    padding: 7px 10px; border-radius: 8px; font-size: 13px;
+    color: var(--muted);
+  }
+  .icon-btn:hover { border-color: var(--muted); color: var(--ink); }
+
+  /* ─── Workspace ─────────────────────────────────── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 16px; padding: 16px; min-height: 0;
+  }
+  @media (max-width: 960px) {
+    .workspace { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+  }
+
+  /* Left: capture area */
+  .capture-panel {
+    display: grid; grid-template-rows: auto 1fr auto;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: var(--shadow); min-height: 0;
+  }
+  .capture-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; border-bottom: 1px solid var(--border-soft);
+    background: var(--panel-alt);
+  }
+  .capture-header strong {
+    font-family: var(--font-ui); font-weight: 600; font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+  .capture-header .dim { color: var(--muted); font-size: 12px; }
+
+  .capture-stage {
+    position: relative; display: grid; place-items: center;
+    padding: 20px; background: repeating-linear-gradient(
+      45deg,
+      color-mix(in oklab, var(--panel-alt) 90%, var(--ink) 4%) 0 12px,
+      var(--panel-alt) 12px 24px
+    );
+    min-height: 0; overflow: hidden;
+  }
+  .capture-stage video {
+    max-width: 100%; max-height: 100%;
+    border-radius: 8px; background: #000;
+    box-shadow: var(--shadow-lift);
+    display: block;
+  }
+  .capture-stage .empty {
+    display: grid; place-items: center; gap: 16px;
+    text-align: center; padding: 24px;
+    max-width: 480px;
+  }
+  .empty h2 {
+    font-family: var(--font-ui); font-size: 22px; font-weight: 700;
+    margin: 0; letter-spacing: -0.01em;
+  }
+  .empty p { margin: 0; color: var(--muted); font-size: 14px; }
+  .primary-cta {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 12px 22px;
+    background: var(--accent); color: white; border: 0;
+    border-radius: 10px; font-size: 15px; font-weight: 600;
+    font-family: var(--font-ja);
+    box-shadow: 0 6px 18px color-mix(in oklab, var(--accent) 40%, transparent);
+    transition: transform 0.1s;
+  }
+  .primary-cta:hover { background: color-mix(in oklab, var(--accent) 90%, black); }
+  .primary-cta:active { transform: translateY(1px); }
+
+  .capture-target-box {
+    position: absolute;
+    border: 3px solid var(--accent);
+    border-radius: 6px;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent);
+    pointer-events: none;
+    transition: all 0.35s cubic-bezier(0.2, 0.7, 0.3, 1);
+    display: none;
+  }
+  .capture-target-box.on { display: block; animation: pulse-ring 1.4s ease-in-out infinite; }
+  @keyframes pulse-ring {
+    0%,100% { box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
+    50%     { box-shadow: 0 0 0 8px color-mix(in oklab, var(--accent) 32%, transparent); }
+  }
+  .capture-target-label {
+    position: absolute; padding: 4px 10px;
+    background: var(--accent); color: white; font-size: 12px; font-weight: 600;
+    border-radius: 999px; pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    display: none;
+  }
+  .capture-target-label.on { display: inline-block; }
+
+  .capture-foot {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; border-top: 1px solid var(--border-soft);
+    background: var(--panel-alt); font-size: 12px; color: var(--muted);
+  }
+  .capture-foot .stat { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .capture-foot .sep { color: var(--border); }
+  .capture-foot .actions { margin-left: auto; display: flex; gap: 6px; }
+
+  /* Right: AI tutor */
+  .tutor {
+    display: grid; grid-template-rows: auto auto 1fr auto;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow); min-height: 0;
+  }
+  .tutor-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border-soft);
+  }
+  .ai-avatar {
+    width: 38px; height: 38px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--ai), color-mix(in oklab, var(--ai) 60%, var(--accent)));
+    color: white; border-radius: 10px; font-size: 18px;
+    box-shadow: 0 3px 8px color-mix(in oklab, var(--ai) 40%, transparent);
+  }
+  .tutor-name { font-family: var(--font-ui); font-weight: 600; font-size: 14px; }
+  .tutor-lesson { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .tutor-head-status {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted); font-family: var(--font-ui);
+  }
+
+  .tutor-progress {
+    padding: 12px 16px; display: grid; gap: 8px;
+    background: var(--panel-alt); border-bottom: 1px solid var(--border-soft);
+  }
+  .progress-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .progress-head strong { font-size: 13px; font-weight: 600; }
+  .progress-head span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .progress-track { height: 6px; background: var(--border-soft); border-radius: 999px; overflow: hidden; }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), color-mix(in oklab, var(--accent) 60%, var(--ai)));
+    border-radius: 999px; transition: width 0.4s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+
+  .tutor-body {
+    padding: 16px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 12px;
+    scroll-behavior: smooth;
+  }
+  .msg { display: grid; grid-template-columns: 28px 1fr; gap: 10px;
+         animation: slide-in 0.25s ease; }
+  @keyframes slide-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .msg-avatar {
+    width: 28px; height: 28px; display: grid; place-items: center;
+    background: var(--ai-soft); color: var(--ai);
+    border-radius: 8px; font-size: 14px; font-weight: 700;
+  }
+  .msg-bubble {
+    background: var(--ai-soft); color: var(--ink);
+    padding: 10px 14px; border-radius: 4px 12px 12px 12px;
+    line-height: 1.55; font-size: 13.5px;
+  }
+  .msg.success .msg-avatar { background: var(--success-soft); color: var(--success); }
+  .msg.success .msg-bubble { background: var(--success-soft); color: color-mix(in oklab, var(--success) 40%, var(--ink)); }
+  .msg.hint .msg-avatar { background: var(--warn-soft); color: var(--warn); }
+  .msg.hint .msg-bubble { background: var(--warn-soft); border-left: 3px solid var(--warn); }
+  .msg.error .msg-avatar { background: var(--accent-soft); color: var(--accent); }
+  .msg.error .msg-bubble { background: var(--accent-soft); color: color-mix(in oklab, var(--accent) 45%, var(--ink)); }
+  .msg-bubble .step-title {
+    font-family: var(--font-ui); font-weight: 600; font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--ai); margin-bottom: 4px;
+  }
+  .msg.success .msg-bubble .step-title { color: var(--success); }
+  .msg.hint .msg-bubble .step-title { color: var(--warn); }
+  .msg.error .msg-bubble .step-title { color: var(--accent); }
+  .msg-bubble .highlight {
+    background: color-mix(in oklab, var(--accent) 20%, transparent);
+    color: var(--accent); padding: 1px 6px; border-radius: 3px; font-weight: 600;
+  }
+  .screen-state {
+    font-size: 11px; color: var(--muted);
+    font-family: var(--font-ui); font-style: italic;
+    padding: 4px 12px;
+  }
+
+  .tutor-actions {
+    padding: 12px 16px; display: flex; gap: 8px; flex-wrap: wrap;
+    border-top: 1px solid var(--border-soft); background: var(--panel-alt);
+  }
+  .btn {
+    padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--ink-soft);
+    font-family: var(--font-ja); font-weight: 500; font-size: 13px;
+    transition: transform 0.1s, border-color 0.15s;
+  }
+  .btn:hover { border-color: var(--muted); color: var(--ink); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    background: var(--accent); color: white; border-color: var(--accent);
+    box-shadow: 0 2px 6px color-mix(in oklab, var(--accent) 40%, transparent);
+  }
+  .btn.primary:hover { background: color-mix(in oklab, var(--accent) 90%, black); }
+  .btn.danger {
+    background: transparent; color: var(--accent); border-color: var(--accent-soft);
+  }
+  .btn.danger:hover { background: var(--accent-soft); }
+  .actions-spacer { flex: 1; }
+
+  /* Setup dialog */
+  .backdrop {
+    position: fixed; inset: 0; background: color-mix(in oklab, var(--ink) 55%, transparent);
+    display: grid; place-items: center; z-index: 200; padding: 16px;
+    animation: fade 0.15s ease;
+  }
+  @keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+  .dialog {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 22px; max-width: 460px; width: 100%;
+    box-shadow: var(--shadow-lift);
+  }
+  .dialog h2 {
+    margin: 0 0 6px; font-family: var(--font-ui); font-size: 18px; font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .dialog p { margin: 4px 0 14px; color: var(--muted); font-size: 13px; }
+  .dialog input[type="password"], .dialog input[type="text"] {
+    width: 100%; padding: 10px 12px; font: inherit; font-family: var(--font-mono);
+    background: var(--panel-alt); color: var(--ink);
+    border: 1px solid var(--border); border-radius: 8px;
+    outline: none; transition: border-color 0.15s;
+  }
+  .dialog input:focus { border-color: var(--accent); }
+  .dialog .dialog-actions {
+    display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end;
+  }
+  .dialog small { color: var(--muted); font-size: 11px; display: block; margin-top: 8px; }
+  .dialog a { color: var(--ai); }
+
+  [hidden] { display: none !important; }
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">P</span>
+      スライド先生
+      <span class="brand-sub">— 実PowerPointをAIが見て教える</span>
+    </div>
+    <div class="topbar-spacer"></div>
+    <div class="capture-chip" id="captureChip">未共有</div>
+    <div class="lesson-picker">
+      <label for="lessonSelect">レッスン</label>
+      <select id="lessonSelect">
+        <option value="first-slide">はじめてのスライド</option>
+        <option value="insert-shape">図形を使いこなす</option>
+        <option value="design-theme">見やすいデザインテーマ</option>
+      </select>
+    </div>
+    <button class="icon-btn" id="settingsBtn" title="設定">⚙</button>
+    <button class="icon-btn" id="themeToggle" title="テーマ切替">🌙</button>
+  </header>
+
+  <div class="workspace">
+    <!-- Screen capture -->
+    <section class="capture-panel" aria-label="画面キャプチャ">
+      <div class="capture-header">
+        <strong>共有画面プレビュー</strong>
+        <span class="dim">— AIがここを見て指示します</span>
+      </div>
+      <div class="capture-stage" id="captureStage">
+        <div class="empty" id="emptyState">
+          <div style="font-size: 48px;">🖥️</div>
+          <h2>PowerPointの画面を共有してください</h2>
+          <p>
+            「画面共有を開始」を押すと、ブラウザが共有するウインドウを聞いてきます。
+            <br><strong>Microsoft PowerPoint のウインドウ</strong>を選んでください。
+            <br>選択後は3〜5秒ごとにAIが画面を読み、次にすべき一手を指示します。
+          </p>
+          <button class="primary-cta" id="startCaptureBtn">
+            🎥 画面共有を開始
+          </button>
+          <p style="font-size: 12px;">
+            画像はGoogle Gemini APIへ送信されます。APIキーの設定が必要です。
+          </p>
+        </div>
+        <video id="captureVideo" autoplay muted playsinline hidden></video>
+        <div class="capture-target-box" id="targetBox"></div>
+        <div class="capture-target-label" id="targetLabel"></div>
+      </div>
+      <div class="capture-foot">
+        <span class="stat" id="statFrames">解析 0 回</span>
+        <span class="sep">·</span>
+        <span class="stat" id="statLast">最終: —</span>
+        <span class="sep">·</span>
+        <span class="stat" id="statInterval">間隔 4.0秒</span>
+        <div class="actions">
+          <button class="btn" id="pauseBtn" hidden>⏸ 一時停止</button>
+          <button class="btn danger" id="stopCaptureBtn" hidden>共有を停止</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI Tutor -->
+    <aside class="tutor" aria-label="AIチューター">
+      <div class="tutor-head">
+        <div class="ai-avatar">✨</div>
+        <div>
+          <div class="tutor-name">AIチューター</div>
+          <div class="tutor-lesson" id="tutorLessonName">レッスン: はじめてのスライド</div>
+        </div>
+        <div class="tutor-head-status" id="tutorStatus">待機中</div>
+      </div>
+
+      <div class="tutor-progress">
+        <div class="progress-head">
+          <strong id="progressStepTitle">開始待ち</strong>
+          <span id="progressCount">0 / 0</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      </div>
+
+      <div class="tutor-body" id="messages" aria-live="polite"></div>
+
+      <div class="tutor-actions">
+        <button class="btn" id="hintBtn">💡 ヒント</button>
+        <button class="btn" id="restartBtn">やり直し</button>
+        <div class="actions-spacer"></div>
+        <button class="btn primary" id="nextBtn">次へ →</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="backdrop" id="setupDialog" hidden>
+  <div class="dialog">
+    <h2>Gemini APIキーを設定</h2>
+    <p>
+      画面解析には Google Gemini の無料APIキーが必要です。
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">
+        aistudio.google.com/apikey</a> で取得できます。
+    </p>
+    <input type="password" id="apiKeyInput" placeholder="AIzaSy... で始まるキーを貼り付け"
+           autocomplete="off" spellcheck="false">
+    <small>キーはこのブラウザ (localStorage) に保存されます。他へは送信されません。</small>
+    <div class="dialog-actions">
+      <button class="btn" id="setupCancel">キャンセル</button>
+      <button class="btn primary" id="setupSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Lesson definitions ───────────────────────────────
+const LESSONS = {
+  "first-slide": {
+    name: "はじめてのスライド",
+    goal: "PowerPointを開き、タイトル付きのスライドを1枚仕上げ、2枚目を追加する。",
+    steps: [
+      "PowerPointで新規プレゼンテーションを開く（既に開いていればOK）",
+      "スライド上部の「タイトルを入力」枠をクリック",
+      "タイトルを入力する（例:「新しい企画のご提案」）",
+      "「サブタイトルを入力」枠をクリックし、1〜2文入力する",
+      "リボンの「ホーム」タブから「新しいスライド」を追加する",
+    ],
+  },
+  "insert-shape": {
+    name: "図形を使いこなす",
+    goal: "挿入タブから図形を追加し、色を変えて配置を整える。",
+    steps: [
+      "リボンの「挿入」タブに切り替える",
+      "「図形」ボタンから四角形などを選んでスライドに追加する",
+      "追加した図形を選択した状態で「図形の書式」から色を変える",
+      "図形の位置を中央付近にドラッグして整える",
+    ],
+  },
+  "design-theme": {
+    name: "見やすいデザインテーマ",
+    goal: "デザインタブでテーマを切り替え、スライド全体の印象を整える。",
+    steps: [
+      "リボンの「デザイン」タブに切り替える",
+      "テーマ一覧から候補を1つ選んで適用する",
+      "別のテーマもプレビューして比較する",
+      "最終的に使うテーマを1つに決める",
+    ],
+  },
+};
+
+// ─── State ────────────────────────────────────────────
+const state = {
+  lessonId: "first-slide",
+  step: 0,
+  stream: null,
+  video: null,
+  captureCanvas: document.createElement("canvas"),
+  intervalMs: 4000,
+  paused: false,
+  analyzing: false,
+  frameCount: 0,
+  lastFrameHash: null,
+  timer: null,
+  overlayEnabled: true,
+};
+
+// ─── DOM refs ─────────────────────────────────────────
+const $ = (s) => document.querySelector(s);
+const messagesEl = $("#messages");
+const videoEl = $("#captureVideo");
+const emptyEl = $("#emptyState");
+const captureChip = $("#captureChip");
+const targetBox = $("#targetBox");
+const targetLabel = $("#targetLabel");
+const captureStage = $("#captureStage");
+
+// ─── API key persistence ─────────────────────────────
+function getApiKey() { return localStorage.getItem("gemini_api_key") || ""; }
+function setApiKey(k) { localStorage.setItem("gemini_api_key", k); }
+
+// ─── Setup dialog ────────────────────────────────────
+function openSetup() {
+  $("#apiKeyInput").value = getApiKey();
+  $("#setupDialog").hidden = false;
+  setTimeout(() => $("#apiKeyInput").focus(), 60);
+}
+function closeSetup() { $("#setupDialog").hidden = true; }
+$("#settingsBtn").addEventListener("click", openSetup);
+$("#setupCancel").addEventListener("click", closeSetup);
+$("#setupSave").addEventListener("click", () => {
+  const k = $("#apiKeyInput").value.trim();
+  if (k.length < 20) { alert("APIキーが短すぎるようです。"); return; }
+  setApiKey(k);
+  closeSetup();
+  addMessage({ kind: "success", title: "設定保存", body: "APIキーを保存しました。画面共有を開始してください。" });
+});
+
+// ─── Theme ────────────────────────────────────────────
+$("#themeToggle").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : cur === "light" ? "dark"
+    : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
+  document.documentElement.setAttribute("data-theme", next);
+});
+
+// ─── Screen capture ───────────────────────────────────
+$("#startCaptureBtn").addEventListener("click", startCapture);
+$("#stopCaptureBtn").addEventListener("click", stopCapture);
+$("#pauseBtn").addEventListener("click", togglePause);
+
+async function startCapture() {
+  if (!getApiKey()) { openSetup(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: 2 },
+      audio: false,
+    });
+    state.stream = stream;
+    videoEl.srcObject = stream;
+    videoEl.hidden = false;
+    emptyEl.hidden = true;
+    $("#stopCaptureBtn").hidden = false;
+    $("#pauseBtn").hidden = false;
+    captureChip.textContent = "共有中";
+    captureChip.classList.add("on");
+
+    // Stop button in browser
+    stream.getVideoTracks()[0].addEventListener("ended", stopCapture);
+
+    await videoEl.play();
+    loadLesson(state.lessonId, /*firstMessage*/ true);
+    scheduleAnalysis(1500);
+  } catch (e) {
+    console.warn(e);
+    if (e.name === "NotAllowedError") {
+      addMessage({ kind: "error", title: "共有がキャンセルされました", body: "「画面共有を開始」からもう一度お試しください。" });
+    } else {
+      addMessage({ kind: "error", title: "画面共有エラー", body: e.message });
+    }
+  }
+}
+
+function stopCapture() {
+  if (state.stream) {
+    state.stream.getTracks().forEach((t) => t.stop());
+    state.stream = null;
+  }
+  videoEl.srcObject = null;
+  videoEl.hidden = true;
+  emptyEl.hidden = false;
+  $("#stopCaptureBtn").hidden = true;
+  $("#pauseBtn").hidden = true;
+  captureChip.textContent = "未共有";
+  captureChip.classList.remove("on");
+  clearTimeout(state.timer);
+  hideTarget();
+  setTutorStatus("待機中");
+}
+
+function togglePause() {
+  state.paused = !state.paused;
+  $("#pauseBtn").textContent = state.paused ? "▶ 再開" : "⏸ 一時停止";
+  if (state.paused) {
+    clearTimeout(state.timer);
+    setTutorStatus("一時停止");
+  } else {
+    scheduleAnalysis(500);
+  }
+}
+
+// ─── Frame extraction ────────────────────────────────
+function grabFrame() {
+  if (!videoEl.videoWidth) return null;
+  const w = videoEl.videoWidth, h = videoEl.videoHeight;
+  // Downscale so max side is 1280 (Gemini works fine)
+  const maxSide = 1280;
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  const cw = Math.round(w * scale);
+  const ch = Math.round(h * scale);
+  state.captureCanvas.width = cw;
+  state.captureCanvas.height = ch;
+  const ctx = state.captureCanvas.getContext("2d");
+  ctx.drawImage(videoEl, 0, 0, cw, ch);
+  return state.captureCanvas.toDataURL("image/jpeg", 0.72);
+}
+
+function frameHash(dataUrl) {
+  // Cheap hash: length + a few sampled chars
+  const s = dataUrl;
+  let h = 0;
+  for (let i = 0; i < s.length; i += 4096) h = (h * 33 + s.charCodeAt(i)) | 0;
+  return `${s.length}:${h}`;
+}
+
+// ─── Gemini call ─────────────────────────────────────
+const SYSTEM_PROMPT = `あなたは PowerPoint の使い方を日本語で1手ずつ教えるチューターです。
+ユーザーの実画面のスクリーンショットと、レッスンの目標・全ステップ・
+現在案内中のステップ番号を与えます。あなたの仕事:
+
+1. 画面が今どういう状態か1文で判定
+2. 現在ステップが完了しているか判定
+3. 完了していなければ次にすべき「一手」を短く指示
+4. 迷いそうな部分に短いヒント
+5. 押すべき場所が画像内で特定できれば正規化座標を返す
+
+以下の JSON のみ、余計な文字を付けず返してください:
+
+{
+  "screen_state": "<画面状態を1文>",
+  "current_step_done": true|false,
+  "guidance": "<次にすべき一手（1〜2文）>",
+  "hint": "<補足があれば1文、なければ空文字>",
+  "confidence": <0.0〜1.0>,
+  "lesson_complete": true|false,
+  "target_bbox": {"x":<0-1>,"y":<0-1>,"w":<0-1>,"h":<0-1>} or null,
+  "target_label": "<何を指しているか短く>"
+}
+target_bbox は自信がある時だけ返し、不明なら null。`;
+
+async function callGemini(dataUrl, lesson, stepIndex) {
+  const key = getApiKey();
+  if (!key) throw new Error("APIキーが未設定です");
+  const base64 = dataUrl.split(",")[1];
+  const stepsTxt = lesson.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const userText = `${SYSTEM_PROMPT}
+
+レッスン名: ${lesson.name}
+目標: ${lesson.goal}
+全ステップ:
+${stepsTxt}
+
+現在案内中のステップ番号: ${stepIndex + 1}
+JSONのみを返答してください。`;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
+  const body = {
+    contents: [{
+      parts: [
+        { text: userText },
+        { inline_data: { mime_type: "image/jpeg", data: base64 } },
+      ],
+    }],
+    generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`HTTP ${res.status}: ${t.slice(0, 200)}`);
+  }
+  const payload = await res.json();
+  const text = payload.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  return JSON.parse(text);
+}
+
+// ─── Analysis loop ───────────────────────────────────
+function scheduleAnalysis(delay) {
+  clearTimeout(state.timer);
+  state.timer = setTimeout(analyzeOnce, delay);
+}
+
+async function analyzeOnce() {
+  if (!state.stream || state.paused || state.analyzing) return;
+  const dataUrl = grabFrame();
+  if (!dataUrl) { scheduleAnalysis(1000); return; }
+
+  const h = frameHash(dataUrl);
+  if (h === state.lastFrameHash) {
+    setTutorStatus("画面変化なし");
+    scheduleAnalysis(state.intervalMs);
+    return;
+  }
+  state.lastFrameHash = h;
+
+  const lesson = LESSONS[state.lessonId];
+  if (state.step >= lesson.steps.length) {
+    scheduleAnalysis(state.intervalMs);
+    return;
+  }
+
+  state.analyzing = true;
+  setTutorStatus("解析中…");
+  try {
+    const data = await callGemini(dataUrl, lesson, state.step);
+    state.frameCount += 1;
+    $("#statFrames").textContent = `解析 ${state.frameCount} 回`;
+    $("#statLast").textContent = `最終: ${new Date().toLocaleTimeString()}`;
+
+    handleGuidance(data);
+    setTutorStatus("監視中");
+  } catch (e) {
+    console.error(e);
+    addMessage({ kind: "error", title: "AIエラー", body: String(e.message || e) });
+    setTutorStatus("エラー");
+  } finally {
+    state.analyzing = false;
+    scheduleAnalysis(state.intervalMs);
+  }
+}
+
+function handleGuidance(d) {
+  const guidance = d.guidance || "";
+  const hint = d.hint || "";
+  const screenState = d.screen_state || "";
+  const label = d.target_label || "";
+
+  addMessage({
+    kind: d.current_step_done ? "success" : "ai",
+    title: d.current_step_done ? "できました" : `ステップ ${state.step + 1} / ${LESSONS[state.lessonId].steps.length}`,
+    body: guidance + (hint ? `<br><em style="color:var(--warn)">💡 ${hint}</em>` : "") +
+          (screenState ? `<div class="screen-state">画面: ${escapeHtml(screenState)}</div>` : ""),
+  });
+
+  // Target overlay
+  if (d.target_bbox && !d.current_step_done && !d.lesson_complete && state.overlayEnabled) {
+    showTarget(d.target_bbox, label);
+  } else {
+    hideTarget();
+  }
+
+  if (d.lesson_complete) {
+    completeLesson();
+  } else if (d.current_step_done) {
+    state.step += 1;
+    updateProgress();
+    if (state.step >= LESSONS[state.lessonId].steps.length) completeLesson();
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// ─── Target overlay (on video preview) ───────────────
+function showTarget(bbox, label) {
+  const rect = videoEl.getBoundingClientRect();
+  const stageRect = captureStage.getBoundingClientRect();
+  // video is displayed within stage; getBoundingClientRect gives displayed size (may be letterboxed)
+  const vw = rect.width, vh = rect.height;
+  const left = rect.left - stageRect.left + bbox.x * vw;
+  const top  = rect.top  - stageRect.top  + bbox.y * vh;
+  const w    = Math.max(24, bbox.w * vw);
+  const h    = Math.max(24, bbox.h * vh);
+  Object.assign(targetBox.style, {
+    left: left + "px", top: top + "px", width: w + "px", height: h + "px",
+  });
+  targetBox.classList.add("on");
+
+  targetLabel.textContent = label || "ここをクリック";
+  targetLabel.classList.add("on");
+  // Position label just above the box (or below if not enough room)
+  const labelTop = top - 30;
+  Object.assign(targetLabel.style, {
+    left: left + "px",
+    top: (labelTop < 0 ? top + h + 6 : labelTop) + "px",
+  });
+}
+function hideTarget() {
+  targetBox.classList.remove("on");
+  targetLabel.classList.remove("on");
+}
+window.addEventListener("resize", hideTarget);
+
+// ─── Messages / progress ─────────────────────────────
+function addMessage({ kind = "ai", title = "", body = "" } = {}) {
+  const el = document.createElement("div");
+  el.className = "msg " + kind;
+  const avatar = kind === "success" ? "✓" : kind === "hint" ? "!" : kind === "error" ? "×" : "AI";
+  el.innerHTML = `
+    <div class="msg-avatar">${avatar}</div>
+    <div class="msg-bubble">
+      ${title ? `<div class="step-title">${escapeHtml(title)}</div>` : ""}
+      <div>${body}</div>
+    </div>`;
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function setTutorStatus(t) { $("#tutorStatus").textContent = t; }
+
+function updateProgress() {
+  const lesson = LESSONS[state.lessonId];
+  const total = lesson.steps.length;
+  const done = Math.min(state.step, total);
+  $("#progressCount").textContent = `${done} / ${total}`;
+  $("#progressFill").style.width = `${(done / total) * 100}%`;
+  $("#progressStepTitle").textContent = state.step < total ? lesson.steps[state.step] : "レッスン完了 🎉";
+}
+
+function completeLesson() {
+  const lesson = LESSONS[state.lessonId];
+  state.step = lesson.steps.length;
+  updateProgress();
+  hideTarget();
+  addMessage({ kind: "success", title: `${lesson.name} 完了！`, body: "お疲れさまでした。他のレッスンも試してみてください。" });
+}
+
+// ─── Lesson loader ───────────────────────────────────
+function loadLesson(id, firstMessage) {
+  state.lessonId = id;
+  state.step = 0;
+  state.lastFrameHash = null;
+  const lesson = LESSONS[id];
+  $("#tutorLessonName").textContent = `レッスン: ${lesson.name}`;
+  updateProgress();
+  if (firstMessage) {
+    messagesEl.innerHTML = "";
+    addMessage({ kind: "ai", title: "はじめに",
+      body: `${lesson.name} を始めます。PowerPointをフォアグラウンドにしたまま、画面の指示に従って操作してください。` });
+    addMessage({ kind: "ai", title: `ステップ 1 / ${lesson.steps.length}`,
+      body: escapeHtml(lesson.steps[0]) });
+  }
+}
+
+// ─── Buttons ─────────────────────────────────────────
+$("#lessonSelect").addEventListener("change", (e) => {
+  loadLesson(e.target.value, true);
+  if (state.stream) scheduleAnalysis(500);
+});
+$("#hintBtn").addEventListener("click", () => {
+  const lesson = LESSONS[state.lessonId];
+  if (state.step >= lesson.steps.length) return;
+  addMessage({ kind: "hint", title: "ヒント", body: escapeHtml(lesson.steps[state.step]) });
+});
+$("#restartBtn").addEventListener("click", () => {
+  loadLesson(state.lessonId, true);
+  if (state.stream) scheduleAnalysis(500);
+});
+$("#nextBtn").addEventListener("click", () => {
+  const lesson = LESSONS[state.lessonId];
+  if (state.step >= lesson.steps.length) {
+    const ids = Object.keys(LESSONS);
+    const nextIdx = (ids.indexOf(state.lessonId) + 1) % ids.length;
+    $("#lessonSelect").value = ids[nextIdx];
+    loadLesson(ids[nextIdx], true);
+    return;
+  }
+  state.step += 1;
+  updateProgress();
+  if (state.step >= lesson.steps.length) completeLesson();
+  else addMessage({ kind: "ai", title: `ステップ ${state.step + 1} / ${lesson.steps.length}`,
+    body: escapeHtml(lesson.steps[state.step]) });
+  if (state.stream) scheduleAnalysis(500);
+});
+
+// ─── Boot ────────────────────────────────────────────
+loadLesson(state.lessonId, true);
+if (!getApiKey()) setTimeout(openSetup, 400);
+</script>

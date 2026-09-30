@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Screen Guide</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">🤖 AI Guide</div>
+      <button id="toggle-settings-btn" class="icon-btn">⚙️</button>
+    </header>
+
+    <div id="main-view" class="view active">
+      <div id="chat-container" class="chat-container">
+        <div class="message assistant">
+          <div class="msg-content">
+            こんにちは！AI Screen Guideです。<br>
+            Blender、Unreal Engine、Photoshopなどの画面を読み取って操作をサポートします。<br>
+            設定(⚙️)からAPIキーを入力し、下の「キャプチャ開始」ボタンを押してください。
+          </div>
+        </div>
+      </div>
+      
+      <div class="controls-container">
+        <div class="status-indicator">
+          <span id="status-dot" class="dot stopped"></span>
+          <span id="status-text">停止中</span>
+        </div>
+        <button id="capture-toggle-btn" class="primary-btn">▶ キャプチャ開始</button>
+        
+        <div class="input-area">
+          <button id="attach-btn" class="icon-btn" title="画像を添付">📎</button>
+          <input type="file" id="file-input" accept="image/*" style="display:none;">
+          <input type="text" id="user-input" placeholder="AIに質問する..." />
+          <button id="send-btn">送信</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="settings-view" class="view">
+      <h2>⚙️ 設定</h2>
+      <div class="setting-group">
+        <label>Gemini APIキー:</label>
+        <input type="password" id="api-key-input" placeholder="AIzaSy...">
+      </div>
+      <div class="setting-group">
+        <label>キャプチャ間隔: <span id="interval-display">6</span>秒</label>
+        <input type="range" id="interval-input" min="1" max="15" value="6">
+      </div>
+      <div class="setting-group">
+        <label>システムプロンプト:</label>
+        <textarea id="prompt-input" rows="5"></textarea>
+      </div>
+      <div class="setting-group">
+        <label>参照マニュアル (任意):</label>
+        <textarea id="manual-input" rows="4" placeholder="特定のソフトの手順などを貼るとAIが考慮します"></textarea>
+      </div>
+      <button id="save-settings-btn" class="primary-btn">保存して戻る</button>
+    </div>
+  </div>
+  
+  <video id="capture-video" autoplay style="display:none;"></video>
+  <canvas id="capture-canvas" style="display:none;"></canvas>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

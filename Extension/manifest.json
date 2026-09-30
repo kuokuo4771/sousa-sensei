@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "AI Screen Guide",
+  "version": "1.0",
+  "description": "リアルタイムLLM操作指示システム (Blender, Unreal Engine, Photoshop対応)",
+  "permissions": [
+    "sidePanel",
+    "desktopCapture",
+    "storage",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "AI Screen Guideを開く"
+  },
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*"
+  ]
+}
