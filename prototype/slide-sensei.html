@@ -363,6 +363,14 @@
   .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
   .log time { font-family: var(--font-mono); margin-right: 6px; }
 
+  .check-chip { background: var(--success-soft); color: var(--success); }
+  .ocr-details { font-size: 11.5px; color: var(--muted); }
+  .ocr-details summary { cursor: pointer; font-family: var(--font-ui); letter-spacing: 0.06em; }
+  .ocr-details div {
+    margin-top: 6px; padding: 8px; border-radius: 6px; background: var(--panel-alt);
+    max-height: 120px; overflow-y: auto; word-break: break-all; line-height: 1.5;
+  }
+
   /* ─── Mini window (Document Picture-in-Picture) ─── */
   body.pip { min-height: 0; }
   body.pip .tutor { height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
@@ -389,6 +397,7 @@
       <label for="lessonSelect">レッスン</label>
       <select id="lessonSelect"></select>
     </div>
+    <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
     <button class="icon-btn" id="pipBtn" title="案内を常に最前面の小窓に出す">📌 ミニ窓で表示</button>
     <button class="icon-btn" id="themeToggle" title="テーマ切替">🌙</button>
   </header>
@@ -410,7 +419,8 @@
             <br>共有したら「📌 ミニ窓で表示」で案内を PowerPoint の上に置けます。
           </p>
           <button class="primary-cta" id="startCaptureBtn">🎥 画面共有を開始</button>
-          <p style="font-size: 12px;">画像はこのブラウザ内だけで処理し、外部へは送信しません。</p>
+          <p style="font-size: 12px;">画像と文字認識はこのブラウザ内だけで処理し、外部へは送信しません。<br>
+            （文字認識の部品と日本語データ 約2MB を初回だけ jsDelivr から読み込みます）</p>
         </div>
         <video id="captureVideo" autoplay muted playsinline hidden></video>
       </div>
@@ -457,6 +467,7 @@
             <div class="step-text" id="stepText"></div>
             <p class="step-hint" id="stepHint"></p>
             <span class="expect-chip" id="expectChip"></span>
+            <span class="expect-chip check-chip" id="checkChip" hidden></span>
           </div>
 
           <div class="done-card" id="doneCard" hidden>
@@ -476,6 +487,11 @@
 
           <div class="log-head">記録</div>
           <ul class="log" id="log"></ul>
+
+          <details class="ocr-details">
+            <summary>認識した文字 <span id="ocrMeta"></span></summary>
+            <div id="ocrText">まだ読んでいません。</div>
+          </details>
         </div>
 
         <div class="tutor-actions">
@@ -496,29 +512,42 @@
 //   small : 小 (<3%)   クリック・文字入力・タブ切替
 //   medium: 中 (3〜20%) 新しいスライド・メニュー・テーマ
 //   large : 大 (≥20%)  レイアウトの大きな変更
+// check: 画面の文字でステップ完了を確かめる条件（文字認識 ON のとき）。満たせば確認なしで次へ
+//   appears: この文字が画面にあれば完了
+//   gone   : ステップ開始時にあったこの文字が消えたら完了
+//   grows  : ステップ開始時になかった文字（2文字の並び）がこの数以上現れたら完了
+// 正規表現の [力カ] は、「入力」の「力」をカタカナの「カ」と読み違えても通すため
 const LESSONS = {
   "first-slide": {
     name: "はじめてのスライド",
     steps: [
       { text: "PowerPointで新規プレゼンテーションを開く",
-        hint: "すでに白紙のスライドが開いていれば「次へ」で進めます。", expect: "any" },
+        hint: "すでに白紙のスライドが開いていれば「次へ」で進めます。", expect: "any",
+        check: { appears: /タイトルを入[力カ]/ }, when: "「タイトルを入力」が表示されたら次へ" },
       { text: "スライド上部の「タイトルを入力」枠をクリック",
-        hint: "点線の枠の中をクリックすると、文字が消えてカーソルが点滅します。", expect: "small" },
+        hint: "点線の枠の中をクリックすると、文字が消えてカーソルが点滅します。", expect: "small",
+        check: { gone: /(?<!サブ)タイトルを入[力カ]/ }, when: "「タイトルを入力」の文字が消えたら次へ" },
       { text: "タイトルを入力する",
-        hint: "例:「新しい企画のご提案」。入力が終わったら少し手を止めてください。", expect: "small" },
+        hint: "例:「新しい企画のご提案」。入力が終わったら少し手を止めてください。", expect: "small",
+        check: { grows: 3 }, when: "文字が3文字以上増えたら次へ" },
       { text: "「サブタイトルを入力」枠をクリックし、1〜2文入力する",
-        hint: "タイトルの下にある枠です。", expect: "small" },
+        hint: "タイトルの下にある枠です。", expect: "small",
+        check: { gone: /サブタイトルを入[力カ]/, grows: 3 }, when: "「サブタイトルを入力」が消えて文字が増えたら次へ" },
       { text: "「ホーム」タブの「新しいスライド」で2枚目を追加する",
-        hint: "左端のスライド一覧に2枚目が増えれば成功です。", expect: "medium" },
+        hint: "左端のスライド一覧に2枚目が増えれば成功です。", expect: "medium",
+        check: { appears: /テキストを入[力カ]/ }, when: "2枚目の「テキストを入力」が表示されたら次へ" },
     ],
   },
   "insert-shape": {
     name: "図形を使いこなす",
     steps: [
       { text: "リボンの「挿入」タブに切り替える",
-        hint: "画面上部のタブの並びにあります。", expect: "small" },
+        hint: "画面上部のタブの並びにあります。", expect: "small",
+        check: { appears: /SmartArt|ワードアート|ヘッダーとフッター|スライド番号/ },
+        when: "「ワードアート」など挿入タブのボタンが表示されたら次へ" },
       { text: "「図形」ボタンから四角形を選び、スライド上でドラッグして描く",
-        hint: "図形一覧が開いたら「四角形」の最初のアイコンを選びます。", expect: "small" },
+        hint: "図形一覧が開いたら「四角形」の最初のアイコンを選びます。", expect: "small",
+        check: { appears: /図形の書式/ }, when: "「図形の書式」タブが表示されたら次へ" },
       { text: "図形を選んだまま「図形の書式」タブで塗りつぶしの色を変える",
         hint: "「図形の塗りつぶし」の▼から色を選びます。", expect: "small" },
       { text: "図形をドラッグして中央付近に配置する",
@@ -529,7 +558,9 @@ const LESSONS = {
     name: "見やすいデザインテーマ",
     steps: [
       { text: "リボンの「デザイン」タブに切り替える",
-        hint: "「挿入」の右隣あたりにあります。", expect: "small" },
+        hint: "「挿入」の右隣あたりにあります。", expect: "small",
+        check: { appears: /スライドのサイズ|背景の書式設定|デザイナー/ },
+        when: "「スライドのサイズ」などデザインタブのボタンが表示されたら次へ" },
       { text: "テーマ一覧から1つ選んで適用する",
         hint: "クリックするとスライド全体のデザインが変わります。", expect: "medium" },
       { text: "別のテーマも適用して見比べる",
@@ -554,6 +585,7 @@ const GRID_W = 192, GRID_H = 108; // 変化検出用の縮小グリッド（文�
 const PIXEL_DIFF = 18;            // 1セルを「変化あり」とみなす輝度差 (0-255)
 const STABLE_MAX = 0.05;          // 確定画面との差の増減がこれ未満なら「操作が落ち着いた」(%)
 const CURSOR_CELLS = 14;          // これ以下のマス数の小さな変化の塊はカーソルとみなして無視
+const BLOB_GAP = 3;               // この距離（マス）以内の変化は同じ塊とみなす（文字の画数がばらけても1つにまとまる）
 const THRESHOLD = 0.05;           // 確定画面との差がこれ以上なら「変化あり」(%)
 const BAND_MEDIUM = 3, BAND_LARGE = 20;
 const INTERVAL_MS = 1500;
@@ -575,6 +607,10 @@ const state = {
   changes: 0,
   noticeUntil: 0,       // この時刻までは見守り表示で上書きしない
   pip: null,
+  stepToken: 0,         // ステップが変わるたびに増やす（読み取り中にステップが変わったら結果を捨てる）
+  stepText: null,       // ステップ開始時に画面から読んだ文字（まだなら null）。1つ前のステップ開始時の文字も含める
+  stepRead: "",         // このステップ開始時に読んだ文字そのもの
+  prevStepRead: "",     // 1つ前のステップ開始時に読んだ文字そのもの
 };
 
 // ─── DOM refs（ミニ窓へ移動しても使えるよう起動時に取得） ─
@@ -586,6 +622,7 @@ const el = Object.fromEntries([
   "progressTitle", "progressCount", "progressFill", "stepCard", "stepNum", "stepText",
   "stepHint", "expectChip", "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
   "watch", "log", "backBtn", "restartBtn", "nextBtn",
+  "ocrBtn", "checkChip", "ocrMeta", "ocrText",
 ].map((id) => [id, document.getElementById(id)]));
 
 const gridCanvas = document.createElement("canvas");
@@ -619,6 +656,9 @@ function render() {
     el.stepText.textContent = step.text;
     el.stepHint.textContent = step.hint;
     el.expectChip.textContent = EXPECT_LABEL[step.expect];
+    const useOcr = ocr.on && !!step.check;
+    el.checkChip.hidden = !useOcr;
+    if (useOcr) el.checkChip.textContent = `🔤 自動確認: ${step.when}`;
   }
   el.backBtn.disabled = state.step === 0;
   el.nextBtn.textContent = finished ? "次のレッスン →" : "次へ →";
@@ -626,21 +666,34 @@ function render() {
 
 function loadLesson(id) {
   state.lessonId = id;
-  state.step = 0;
   el.lessonSelect.value = id;
-  hideConfirm();
-  resetBase();
   addLog(`レッスン開始: ${lesson().name}`);
-  render();
+  goTo(0);
 }
 
-function goTo(step) {
+// knownText: 移動先ステップ開始時の画面の文字が分かっていれば渡す（読み直しを省く）
+function goTo(step, knownText = null) {
   state.step = Math.max(0, Math.min(step, lesson().steps.length));
+  state.stepToken++;
+  state.prevStepRead = state.stepRead;
+  state.stepRead = "";
+  state.stepText = null;
   hideConfirm();
   resetBase();
   render();
   if (state.step >= lesson().steps.length) addLog("レッスン完了 🎉");
   if (state.stream && !state.paused) setWatch("見守り中 — 操作してみてください");
+  readStepStart(knownText);
+}
+
+// 文字で確認できたので、確認なしで次へ進む
+function autoAdvance(text) {
+  addLog(`✓ ステップ ${state.step + 1} 完了（文字で確認）`);
+  goTo(state.step + 1, text);
+  if (state.step < lesson().steps.length) {
+    setWatch("文字で確認できたので、次のステップへ進みました。");
+    state.noticeUntil = Date.now() + 6000;
+  }
 }
 
 // 今の画面を新しい基準にする（ステップ移動時）
@@ -720,6 +773,8 @@ async function startCapture() {
     state.baseGray = null;
     setStatus("見守り中");
     addLog(`共有開始: ${track.label || "ウインドウ"}`);
+    warnedHidden = false;
+    if (ocr.on) ensureOcr().then(() => readStepStart());
     schedule(500);
   } catch (e) {
     const msg = e.name === "NotAllowedError"
@@ -771,15 +826,24 @@ function clearSchedule() {
   state.timer = null;
 }
 
-async function grabGray() {
-  let source = el.captureVideo;
-  let bitmap = null;
+// 共有中の画面の最新フレーム。ImageCapture はタブが裏に回っても（video が描画されなくても）取れる
+async function grabFrame() {
   if (state.imageCapture) {
-    try { bitmap = await state.imageCapture.grabFrame(); source = bitmap; } catch { /* video にフォールバック */ }
+    try {
+      const bitmap = await state.imageCapture.grabFrame();
+      return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+    } catch { /* video にフォールバック */ }
   }
-  if (!bitmap && !el.captureVideo.videoWidth) return null;
-  gridCtx.drawImage(source, 0, 0, GRID_W, GRID_H);
-  bitmap?.close();
+  const v = el.captureVideo;
+  if (!v.videoWidth) return null;
+  return { source: v, width: v.videoWidth, height: v.videoHeight, close: () => {} };
+}
+
+async function grabGray() {
+  const frame = await grabFrame();
+  if (!frame) return null;
+  gridCtx.drawImage(frame.source, 0, 0, GRID_W, GRID_H);
+  frame.close();
   const px = gridCtx.getImageData(0, 0, GRID_W, GRID_H).data;
   const gray = new Uint8Array(GRID_W * GRID_H);
   for (let i = 0; i < gray.length; i++) {
@@ -801,8 +865,8 @@ function diffRatio(a, b) {
     mask[i] = 2;
     for (let q = 0; q < blob.length; q++) {
       const x = blob[q] % GRID_W, y = (blob[q] / GRID_W) | 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -BLOB_GAP; dy <= BLOB_GAP; dy++) {
+        for (let dx = -BLOB_GAP; dx <= BLOB_GAP; dx++) {
           const nx = x + dx, ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
           const k = ny * GRID_W + nx;
@@ -850,12 +914,32 @@ async function sample() {
   schedule();
 }
 
-function onChange(net, band) {
+async function onChange(net, band) {
   state.changes++;
   el.statChanges.textContent = `変化 ${state.changes} 回`;
   addLog(`変化 ${BAND_NAME[band]} ${net.toFixed(2)}%`);
   const step = currentStep();
   if (!step) return;
+
+  // 文字の条件があれば、まず画面の文字で確かめる。満たせば確認なしで次へ
+  if (ocr.on && step.check) {
+    const token = state.stepToken;
+    setWatch("文字を確認中…");
+    let text = await readScreen();
+    if (token !== state.stepToken) return;   // 読んでいる間にステップが変わった
+    let passed = text !== null && checkPassed(step.check, state.stepText, text);
+    // 「消えた」「増えた」は読み落としでも満たしてしまうので、もう一度読んで確かめる
+    if (passed && (step.check.gone || step.check.grows)) {
+      text = await readScreen();
+      if (token !== state.stepToken) return;
+      passed = text !== null && checkPassed(step.check, state.stepText, text);
+    }
+    if (passed) {
+      autoAdvance(text);
+      return;
+    }
+  }
+
   const need = EXPECT_LEVEL[step.expect];
   if (band >= need) {
     showConfirm(net, band);
@@ -865,6 +949,120 @@ function onChange(net, band) {
     state.noticeUntil = Date.now() + 8000;
   }
 }
+
+// ─── 文字認識（tesseract.js。画像はブラウザ内で処理） ───
+const TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+const OCR_LANG_PATH = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/jpn@1/4.0.0_best_int";
+const OCR_MAX_WIDTH = 1920;       // これより大きいフレームは縮小して読む（速度のため）
+
+const ocr = { on: true, worker: null, loading: null, queue: Promise.resolve() };
+
+function setOcrState(text) { el.ocrBtn.textContent = `🔤 文字認識 ${text}`; }
+
+function ensureOcr() {
+  if (ocr.worker) return Promise.resolve(ocr.worker);
+  ocr.loading ??= (async () => {
+    setOcrState("準備中…");
+    addLog("文字認識を準備中（初回は約2MBを読み込みます）");
+    if (!window.Tesseract) {
+      await new Promise((ok, ng) => {
+        const s = document.createElement("script");
+        s.src = TESSERACT_URL;
+        s.onload = ok;
+        s.onerror = () => ng(new Error("tesseract.js を読み込めませんでした"));
+        document.head.append(s);
+      });
+    }
+    const worker = await Tesseract.createWorker("jpn", 1, { langPath: OCR_LANG_PATH });
+    // 画面のあちこちに散らばった文字を拾うモード（リボンやプレースホルダー向き）
+    await worker.setParameters({ tessedit_pageseg_mode: "11" });
+    ocr.worker = worker;
+    setOcrState(ocr.on ? "ON" : "OFF");
+    addLog("文字認識の準備ができました");
+    return worker;
+  })().catch((e) => {
+    ocr.loading = null;
+    ocr.on = false;
+    setOcrState("OFF");
+    render();
+    addLog(`⚠ 文字認識を使えません: ${e.message}`);
+    return null;
+  });
+  return ocr.loading;
+}
+
+// 今の画面の文字を読み、空白を除いた文字列を返す（読めなければ null）。一度に1つずつ順番に処理する
+function readScreen() {
+  const run = async () => {
+    const worker = await ensureOcr();
+    if (!worker || !state.stream) return null;
+    const frame = await grabFrame();
+    if (!frame) return null;
+    const scale = Math.min(1, OCR_MAX_WIDTH / frame.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(frame.width * scale);
+    canvas.height = Math.round(frame.height * scale);
+    const ctx = canvas.getContext("2d");
+    // 白黒＋コントラスト強調で、薄い灰色のプレースホルダーを読みやすくし、点線枠のノイズを抑える
+    ctx.filter = "grayscale(1) contrast(2.5)";
+    ctx.drawImage(frame.source, 0, 0, canvas.width, canvas.height);
+    frame.close();
+    const started = performance.now();
+    const { data } = await worker.recognize(canvas);
+    const text = data.text.replace(/\s+/g, "");
+    el.ocrMeta.textContent = `（${((performance.now() - started) / 1000).toFixed(1)}秒・${text.length}文字）`;
+    el.ocrText.textContent = text || "（文字が見つかりませんでした）";
+    return text;
+  };
+  const result = ocr.queue.then(run, run).catch((e) => {
+    addLog(`⚠ 文字認識エラー: ${e.message}`);
+    return null;
+  });
+  ocr.queue = result;
+  return result;
+}
+
+// 文字の条件を満たしているか。before はステップ開始時に読んだ文字（まだ読めていなければ null）
+function checkPassed(check, before, now) {
+  if (check.appears && !check.appears.test(now)) return false;
+  if (check.gone) {
+    // 最初にあった文字が消えたことを確かめる（最初に読めていなければ判定しない）
+    if (before === null || !check.gone.test(before) || check.gone.test(now)) return false;
+  }
+  if (check.grows && (before === null || newPairs(before, now) < check.grows)) return false;
+  return true;
+}
+
+// before になかった「2文字の並び」が now にいくつあるか。
+// 文字数の差で比べると、文字認識がほかの場所を読み落としたときに増えた分が打ち消されるため
+function newPairs(before, now) {
+  const seen = new Set();
+  for (let i = 0; i < before.length - 1; i++) seen.add(before.slice(i, i + 2));
+  let count = 0;
+  for (let i = 0; i < now.length - 1; i++) if (!seen.has(now.slice(i, i + 2))) count++;
+  return count;
+}
+
+// ステップ開始時の画面の文字を読んでおく（「消えた」「増えた」の比較用）。
+// 「現れた」だけの条件なら、この時点で満たしていればそのまま次へ進む
+async function readStepStart(knownText = null) {
+  const step = currentStep();
+  if (!ocr.on || !state.stream || !step?.check) return;
+  const token = state.stepToken;
+  const text = knownText ?? await readScreen();
+  if (token !== state.stepToken || text === null) return;
+  // 文字認識はときどき一部を読み落とすので、1つ前のステップ開始時の文字も合わせて「開始時にあった文字」とする
+  state.stepRead = text;
+  state.stepText = `${text}|${state.prevStepRead}`;
+  if (!step.check.gone && !step.check.grows && checkPassed(step.check, text, text)) autoAdvance(text);
+}
+
+el.ocrBtn.addEventListener("click", () => {
+  ocr.on = !ocr.on;
+  setOcrState(ocr.on ? "ON" : "OFF");
+  render();
+  if (ocr.on && state.stream) readStepStart();
+});
 
 // ─── Mini window (Document Picture-in-Picture) ───────
 if (!("documentPictureInPicture" in window)) {
@@ -896,8 +1094,11 @@ async function togglePip() {
 }
 
 // ミニ窓なしでこのタブが裏に回ると、タイマーが間引かれて見守りが遅れる
+// （共有1回につき1度だけ知らせる）
+let warnedHidden = false;
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && state.stream && !state.pip) {
+  if (document.hidden && state.stream && !state.pip && !warnedHidden) {
+    warnedHidden = true;
     addLog("⚠ ブラウザが裏に回りました。ミニ窓で表示すると確実に見守れます");
   }
 });

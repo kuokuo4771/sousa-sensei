@@ -186,6 +186,7 @@ const GRID_W = 192, GRID_H = 108;     // 変化検出用の縮小グリッド（
 const PIXEL_DIFF = 18;                // 1セルを「変化あり」とみなす輝度差 (0-255)
 const MAX_LOG = 24;
 const STABLE_MAX = 0.05;              // 確定画面との差の増減がこれ未満なら「操作が落ち着いた」(%)
+const BLOB_GAP = 3;                   // この距離（マス）以内の変化は同じ塊とみなす（文字の画数がばらけても1つにまとまる）
 const BAND_MEDIUM = 3;                // これ以上は「中」: 新しいスライド、メニュー (%)
 const BAND_LARGE = 20;                // これ以上は「大」: レイアウト変更、ダイアログ (%)
 
@@ -335,8 +336,8 @@ function diffStats(a, b, heat) {
     mask[i] = 2;
     for (let q = 0; q < blob.length; q++) {
       const x = blob[q] % GRID_W, y = (blob[q] / GRID_W) | 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -BLOB_GAP; dy <= BLOB_GAP; dy++) {
+        for (let dx = -BLOB_GAP; dx <= BLOB_GAP; dx++) {
           const nx = x + dx, ny = y + dy;
           if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
           const k = ny * GRID_W + nx;
