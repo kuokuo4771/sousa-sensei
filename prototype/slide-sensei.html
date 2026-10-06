@@ -877,6 +877,10 @@ async function startCapture() {
     await el.captureVideo.play();
     state.prevGray = null;
     state.baseGray = null;
+    state.changes = 0;
+    el.statMotion.textContent = "増減 —";
+    el.statNet.textContent = "差 —";
+    el.statChanges.textContent = "変化 0 回";
     setStatus("見守り中");
     addLog(`共有開始: ${track.label || "ウインドウ"}`);
     warnedHidden = false;
