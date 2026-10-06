@@ -456,6 +456,41 @@
   }
   .secondary-cta:hover { border-color: var(--muted); }
 
+  /* ─── AI ─── */
+  .ai-box {
+    padding: 10px 12px; border-radius: 10px; font-size: 13px;
+    background: var(--ai-soft); border: 1px solid color-mix(in oklab, var(--ai) 30%, transparent);
+  }
+  .ai-box .ai-head { font-family: var(--font-ui); font-size: 11px; font-weight: 700; color: var(--ai); letter-spacing: 0.06em; }
+  .ai-box p { margin: 4px 0 0; }
+  .ai-box.busy p { color: var(--muted); }
+  .ai-box.error { background: var(--warn-soft); border-color: color-mix(in oklab, var(--warn) 35%, transparent); }
+
+  .dialog {
+    width: min(520px, calc(100vw - 32px)); padding: 20px 22px; border-radius: 14px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--ink);
+    box-shadow: var(--shadow-lift);
+  }
+  .dialog::backdrop { background: color-mix(in oklab, var(--ink) 45%, transparent); }
+  .dialog h2 { margin: 0 0 6px; font-size: 18px; }
+  .dialog .note { margin: 4px 0 12px; font-size: 12.5px; color: var(--muted); }
+  .dialog .choice {
+    display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-bottom: 8px;
+    border: 1px solid var(--border); border-radius: 10px; cursor: pointer;
+  }
+  .dialog .choice:has(input:checked) { border-color: var(--ai); background: var(--ai-soft); }
+  .dialog .choice:has(input:disabled) { opacity: 0.5; cursor: default; }
+  .dialog .choice small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .dialog .choice small.warn { color: color-mix(in oklab, var(--warn) 70%, var(--ink)); }
+  .dialog .fields { display: grid; gap: 8px; margin: 4px 0 8px 30px; font-size: 12.5px; }
+  .dialog .fields small { color: var(--muted); }
+  .dialog input[type="text"], .dialog input[type="password"] {
+    display: block; width: 100%; margin-top: 4px; padding: 8px 10px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel-alt); color: var(--ink);
+  }
+  .dialog .dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .dialog a { color: var(--ai); }
+
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -473,6 +508,8 @@
       <label for="lessonSelect">レッスン</label>
       <select id="lessonSelect"></select>
     </div>
+    <button class="icon-btn" id="makeBtn" title="やりたいことを書くと、AI が手順（レッスン）を作ります">✨ 手順を作る</button>
+    <button class="icon-btn" id="aiBtn" title="AI の設定（Chrome 内蔵AI または Gemini API 無料枠）">🤖 AI OFF</button>
     <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、光らせる場所を探し、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
     <button class="icon-btn" id="autoBtn" title="ON にすると「できた？」のあと数秒待って自動で次へ進みます（PowerPoint から手を離さずに進めるため）">⏩ 自動で次へ OFF</button>
     <button class="icon-btn" id="voiceBtn" title="次の手順を音声で読み上げます">🔊 音声 ON</button>
@@ -561,6 +598,11 @@
           </div>
           <div class="guide-missing" id="guideMissing" hidden></div>
 
+          <div class="ai-box" id="aiBox" hidden>
+            <div class="ai-head">🤖 AI</div>
+            <p id="aiText"></p>
+          </div>
+
           <div class="done-card" id="doneCard" hidden>
             <div class="done-emoji">🎉</div>
             <strong>レッスン完了！</strong>
@@ -590,6 +632,7 @@
         <div class="tutor-actions">
           <button class="btn" id="backBtn">← 戻る</button>
           <button class="btn" id="restartBtn">やり直し</button>
+          <button class="btn" id="askBtn" title="今の画面を AI に見せて、次にやることを聞きます">🤖 AIに聞く</button>
           <div class="actions-spacer"></div>
           <button class="btn primary" id="nextBtn">次へ →</button>
         </div>
@@ -598,6 +641,288 @@
   </div>
 </div>
 
+<dialog class="dialog" id="aiDialog">
+  <h2>🤖 AI の設定</h2>
+  <p class="note">AI は「🤖 AIに聞く」「できた？にひとこと添える」「✨ 手順を作る」に使います。どちらも無料で使えます。</p>
+  <label class="choice">
+    <input type="radio" name="provider" value="off">
+    <span><b>使わない</b><small>文字認識と変化検知だけで案内します</small></span>
+  </label>
+  <label class="choice">
+    <input type="radio" name="provider" value="builtin" id="builtinRadio">
+    <span><b>Chrome 内蔵AI（端末内で処理・おすすめ）</b><small id="builtinState">確認中…</small></span>
+  </label>
+  <button class="btn" id="builtinPrepare" hidden>内蔵AIを準備する（初回のみ約3〜4GBを取り込み）</button>
+  <label class="choice">
+    <input type="radio" name="provider" value="gemini">
+    <span><b>Gemini API 無料枠</b>
+      <small class="warn">⚠ 無料枠では、送った画面の画像が Google の製品改善に使われます。社外秘や個人情報が写る画面では使わないでください。</small></span>
+  </label>
+  <div class="fields" id="geminiFields">
+    <label>APIキー（<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> で無料で作れます）
+      <input type="password" id="geminiKey" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
+    <label>モデル <input type="text" id="geminiModel" spellcheck="false"></label>
+    <small>キーはこのブラウザの中にだけ保存されます。</small>
+  </div>
+  <p class="note" id="aiTestResult"></p>
+  <div class="dialog-actions">
+    <button class="btn" id="aiTest">接続テスト</button>
+    <span class="actions-spacer"></span>
+    <button class="btn" id="aiClose">閉じる</button>
+    <button class="btn primary" id="aiSave">保存</button>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="makeDialog">
+  <h2>✨ やりたいことから手順を作る</h2>
+  <p class="note">例:「スライドに表を入れたい」「文字を大きくしたい」「スライドショーを始めたい」</p>
+  <input type="text" id="goalInput" placeholder="やりたいこと">
+  <p class="note" id="makeResult"></p>
+  <div class="dialog-actions">
+    <span class="actions-spacer"></span>
+    <button class="btn" id="makeClose">閉じる</button>
+    <button class="btn primary" id="makeGo">手順を作る</button>
+  </div>
+</dialog>
+
+<script>
+// スライド先生の AI 連携。無料で使える2つの方法に対応する。
+//   builtin: Chrome 内蔵AI（Gemini Nano / Prompt API）。端末内で動き、画像は外に出ない。
+//            Chrome 148 以降（日本語は 149 以降）。初回に約3〜4GBのモデルを取り込む。メモリ・空き容量の条件あり
+//   gemini : Gemini API の無料枠。Google AI Studio の APIキーが必要。
+//            無料枠では送った内容（画面の画像を含む）が Google の製品改善に使われる
+// どちらも「答えは JSON で返させ、こちらで中身を確かめてから使う」。AI の答えをそのまま信じて操作を進めない。
+"use strict";
+
+const AI = (() => {
+  const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/";
+  const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+  const IMAGE_MAX_SIDE = 1280;        // AI に渡す画像の長辺
+  const MIN_INTERVAL_MS = 4000;       // 呼び出しの最短間隔（無料枠を使い切らないため）
+  const MAX_PER_MINUTE = 8;           // 1分あたりの上限
+
+  const BUILTIN_OPTIONS = {
+    expectedInputs: [{ type: "text", languages: ["ja"] }, { type: "image" }],
+    expectedOutputs: [{ type: "text", languages: ["ja"] }],
+  };
+
+  const SYSTEM = `あなたは「スライド先生」です。Mac の PowerPoint（日本語版）を初めて使う人に、
+画面を見ながら次の一手を教えます。
+- 答えは必ず指定された JSON だけで返す
+- 説明はやさしい日本語で短く（1〜2文）
+- ボタンやタブの名前は、画面に表示されている表記のまま書く（例:「新しいスライド」「挿入」「図形の書式」）
+- 分からないときは推測で断言せず、そう書く`;
+
+  // ─── 設定（このブラウザに保存） ───────────────────
+  const settings = { provider: "off", geminiKey: "", geminiModel: DEFAULT_GEMINI_MODEL };
+  try { Object.assign(settings, JSON.parse(localStorage.getItem("slideSenseiAI") || "{}")); } catch { /* 初期値のまま */ }
+  function save(next) {
+    Object.assign(settings, next);
+    try { localStorage.setItem("slideSenseiAI", JSON.stringify(settings)); } catch { /* 保存できない環境 */ }
+  }
+  function enabled() {
+    return settings.provider === "builtin" || (settings.provider === "gemini" && !!settings.geminiKey);
+  }
+  function label() {
+    return { builtin: "内蔵AI", gemini: "Gemini" }[settings.provider] ?? "OFF";
+  }
+
+  // ─── 呼び出し回数の制限 ────────────────────────
+  const calls = [];   // 直近1分の呼び出し時刻
+  function rateCheck() {
+    const now = Date.now();
+    while (calls.length && now - calls[0] > 60_000) calls.shift();
+    if (calls.length && now - calls[calls.length - 1] < MIN_INTERVAL_MS) {
+      return "少し間をあけてからもう一度どうぞ（AI の呼び出しは4秒に1回まで）";
+    }
+    if (calls.length >= MAX_PER_MINUTE) return `AI の呼び出しが1分間の上限（${MAX_PER_MINUTE}回）に達しました`;
+    calls.push(now);
+    return null;
+  }
+  function usage() {
+    const now = Date.now();
+    return calls.filter((t) => now - t <= 60_000).length;
+  }
+
+  // ─── Chrome 内蔵AI ───────────────────────────
+  let builtinBase = null;
+
+  async function builtinStatus() {
+    if (!("LanguageModel" in self)) return "unavailable";
+    try { return await LanguageModel.availability(BUILTIN_OPTIONS); } catch { return "unavailable"; }
+  }
+
+  // モデルの取り込みが必要なときはボタンを押した直後に呼ぶこと（ブラウザの制限）
+  async function prepareBuiltin(onProgress) {
+    if (builtinBase) return builtinBase;
+    builtinBase = await LanguageModel.create({
+      ...BUILTIN_OPTIONS,
+      initialPrompts: [{ role: "system", content: SYSTEM }],
+      monitor(m) { m.addEventListener("downloadprogress", (e) => onProgress?.(e.loaded)); },
+    });
+    return builtinBase;
+  }
+
+  async function askBuiltin(text, image, schema) {
+    const base = await prepareBuiltin();
+    const session = await base.clone();   // 毎回、前の会話を持ち込まない
+    try {
+      const content = [{ type: "text", value: text }];
+      if (image) content.push({ type: "image", value: image });
+      return await session.prompt([{ role: "user", content }], { responseConstraint: schema });
+    } finally {
+      session.destroy();
+    }
+  }
+
+  // ─── Gemini API ──────────────────────────────
+  async function askGemini(text, image) {
+    const parts = [{ text }];
+    if (image) parts.push({ inlineData: { mimeType: "image/jpeg", data: toJpegBase64(image) } });
+    const res = await fetch(`${GEMINI_ENDPOINT}${encodeURIComponent(settings.geminiModel)}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": settings.geminiKey },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM }] },
+        contents: [{ role: "user", parts }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      if (res.status === 429) throw new Error("Gemini の無料枠の回数制限に達しました。しばらく待ってからお試しください");
+      if (res.status === 400 && /API key/i.test(body)) throw new Error("APIキーが正しくないようです。AI 設定を確認してください");
+      if (res.status === 404) throw new Error(`モデル「${settings.geminiModel}」が見つかりません。AI 設定でモデル名を確認してください`);
+      throw new Error(`Gemini API エラー（${res.status}）: ${body.slice(0, 160)}`);
+    }
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  }
+
+  function toJpegBase64(canvas) {
+    return canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
+  }
+
+  // ─── 共通 ───────────────────────────────────
+  // 画面のフレームを AI に渡す大きさのキャンバスにする
+  function frameToCanvas(frame) {
+    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(frame.width, frame.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(frame.width * scale);
+    c.height = Math.round(frame.height * scale);
+    c.getContext("2d").drawImage(frame.source, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  async function ask(text, image, schema) {
+    if (!enabled()) throw new Error("AI が OFF です。「🤖 AI」から設定してください");
+    const limited = rateCheck();
+    if (limited) throw new Error(limited);
+    const raw = settings.provider === "builtin"
+      ? await askBuiltin(text, image, schema)
+      : await askGemini(`${text}\n\n次の JSON スキーマに合う JSON だけを返してください:\n${JSON.stringify(schema)}`, image);
+    return parseJson(raw);
+  }
+
+  // JSON だけを返すよう頼んでも ```json で囲まれることがあるので取り出す
+  function parseJson(raw) {
+    const s = String(raw).trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "");
+    try { return JSON.parse(s); } catch { /* 下で前後の余計な文字を除いて再挑戦 */ }
+    const m = s.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw new Error("AI の答えを読み取れませんでした");
+  }
+
+  const str = (v, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+  // ─── 使い道1: 画面を見て次の一手を答える ─────────────
+  const NEXT_SCHEMA = {
+    type: "object",
+    properties: {
+      done: { type: "boolean" },
+      say: { type: "string" },
+      target: { type: "string" },
+      box: { type: "array", items: { type: "number" } },
+      reason: { type: "string" },
+    },
+    required: ["done", "say", "target", "reason"],
+  };
+
+  // AI が答えた [ymin, xmin, ymax, xmax]（0〜1000）を、画面に対する割合の枠にする。おかしな値なら null
+  function toBox(b) {
+    if (!Array.isArray(b) || b.length !== 4 || !b.every((v) => Number.isFinite(v) && v >= 0 && v <= 1000)) return null;
+    const [y0, x0, y1, x1] = b.map((v) => v / 1000);
+    return x1 > x0 && y1 > y0 && x1 - x0 < 0.6 && y1 - y0 < 0.6 ? { x0, y0, x1, y1 } : null;
+  }
+
+  // ctx: { lesson, steps, stepIndex, question? }。返り値: { done, say, target, reason }
+  async function nextAction(frame, ctx) {
+    const steps = ctx.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+    const text = `レッスン:「${ctx.lesson}」
+手順:
+${steps}
+いま取り組んでいる手順: ${ctx.stepIndex + 1}. ${ctx.steps[ctx.stepIndex] ?? "（すべて完了）"}
+${ctx.question ? `利用者からの質問: ${ctx.question}\n` : ""}
+添付は利用者の PowerPoint の画面です。次を JSON で答えてください。
+- done: いまの手順がこの画面ですでに終わっていれば true
+- say: 次にやる一手（1〜2文）。終わっていれば「できています」と短く
+- target: その一手で押す・クリックする場所に書かれている文字を、画面の表記のまま（例: 新しいスライド）。
+  文字のない場所（図形そのもの、スライドの中など）や分からないときは空文字
+- box: その場所の範囲を [ymin, xmin, ymax, xmax]（画像の左上を0、右下を1000とした整数）で。分からなければ空の配列
+- reason: そう判断した理由を短く`;
+    const r = await ask(text, frameToCanvas(frame), NEXT_SCHEMA);
+    return { done: r.done === true, say: str(r.say), target: str(r.target, 30), box: toBox(r.box), reason: str(r.reason) };
+  }
+
+  // ─── 使い道2: やりたいことからレッスンを作る ─────────────
+  const LESSON_SCHEMA = {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            hint: { type: "string" },
+            target: { type: "string" },
+            appears: { type: "string" },
+          },
+          required: ["text", "hint", "target", "appears"],
+        },
+      },
+    },
+    required: ["name", "steps"],
+  };
+
+  // 返り値: { name, steps: [{ text, hint, target, appears }] }（3〜8ステップに整える）
+  async function makeLesson(goal) {
+    const text = `利用者のやりたいこと:「${goal}」
+これを Mac の PowerPoint（日本語版）で行う手順を、初心者向けに3〜8ステップで作り、JSON で答えてください。
+- name: レッスン名（15文字以内）
+- steps[].text: その手順でやること（1文）
+- steps[].hint: 迷いそうな点の補足（1文）
+- steps[].target: その手順でクリックするボタンやタブの名前を画面の表記のまま（例: 挿入）。なければ空文字
+- steps[].appears: その手順ができたときに画面に新しく現れる文字があれば、その表記（例: 図形の書式）。なければ空文字
+1つの手順には操作を1つだけ入れてください。`;
+    const r = await ask(text, null, LESSON_SCHEMA);
+    const steps = (Array.isArray(r.steps) ? r.steps : [])
+      .map((s) => ({ text: str(s.text, 80), hint: str(s.hint, 120), target: str(s.target, 30), appears: str(s.appears, 30) }))
+      .filter((s) => s.text)
+      .slice(0, 8);
+    if (steps.length < 2) throw new Error("手順をうまく作れませんでした。やりたいことを具体的に書いてみてください");
+    return { name: str(r.name, 20) || goal.slice(0, 20), steps };
+  }
+
+  return {
+    settings, save, enabled, label, usage,
+    builtinStatus, prepareBuiltin,
+    nextAction, makeLesson,
+    DEFAULT_GEMINI_MODEL,
+  };
+})();
+</script>
 <script>
 // ─── Lesson definitions ───────────────────────────────
 // expect: このステップを確認するのに必要な変化の大きさ（それ未満の変化では「できた？」を出さない）
@@ -739,6 +1064,9 @@ const el = Object.fromEntries([
   "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn", "watch", "log",
   "ocrMeta", "ocrText", "backBtn", "restartBtn", "nextBtn",
   "autoBtn", "voiceBtn", "countdown", "countdownBar",
+  "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
+  "aiDialog", "builtinRadio", "builtinState", "builtinPrepare", "geminiFields", "geminiKey", "geminiModel",
+  "aiTestResult", "aiTest", "aiClose", "aiSave", "makeDialog", "goalInput", "makeResult", "makeClose", "makeGo",
 ].map((id) => [id, document.getElementById(id)]));
 
 // ─── 設定（このブラウザに保存） ───────────────────────
@@ -841,6 +1169,7 @@ function goTo(step, knownRead = null, cheer = false) {
   state.target = next?.keep && state.target ? { ...state.target, say: next.keep } : null;
   state.targetMissing = null;
   hideConfirm();
+  el.aiBox.hidden = true;
   resetBase();
   render();
   if (!next) {
@@ -1190,6 +1519,8 @@ async function onChange(net, band) {
   if (band >= need) {
     showConfirm(net, band);
     setWatch("確認待ち");
+    // 文字では確かめられない手順（色・配置・テーマなど）は、AI に画面を見てもらい「できた？」にひとこと添える
+    if (!step.check && AI.enabled()) commentByAI(state.stepToken);
   } else {
     setWatch(`変化（${BAND_NAME[band]}・${net.toFixed(2)}%）がありました。このステップは「${BAND_NAME[need]}」以上の変化を待っています。`, "small");
     state.noticeUntil = Date.now() + 8000;
@@ -1316,6 +1647,10 @@ function stepBefore() { return [state.startRead, state.prevStartRead].filter(Boo
 // 文字の条件を満たしているか
 function checkPassed(check, before, now) {
   if (check.appears && !check.appears.test(now.text)) return false;
+  // appearsNew: ステップ開始時にはなかった文字が現れた（AI が作ったレッスン用。最初から見えている文字で即完了しないように）
+  if (check.appearsNew) {
+    if (!before.length || before.some((r) => check.appearsNew.test(r.text)) || !check.appearsNew.test(now.text)) return false;
+  }
   if (check.gone) {
     // 最初にあった文字が消えたことを確かめる（最初に読めていなければ判定しない）
     if (!before.some((r) => check.gone.test(r.text)) || check.gone.test(now.text)) return false;
@@ -1347,7 +1682,7 @@ async function readStepStart(known = null) {
   if (token !== state.stepToken || !read) return;
   state.startRead = read;
   updateTarget(read);
-  if (step.check && !step.check.gone && !step.check.grows && checkPassed(step.check, [read], read)) {
+  if (step.check?.appears && !step.check.gone && !step.check.grows && checkPassed(step.check, [read], read)) {
     autoAdvance(read);
   }
 }
@@ -1449,6 +1784,221 @@ function placePreviewBox() {
   Object.assign(el.targetTag.style, { left: `${left}px`, top: `${top}px` });
 }
 window.addEventListener("resize", placePreviewBox);
+
+// ─── AI（ai.js） ─────────────────────────────────────
+// AI には「次の一手」と「押す場所の文字」を答えてもらい、その文字の位置は文字認識で探して光らせる。
+// AI は画面上の正確な位置が苦手なので、位置は文字認識に任せる
+
+function renderAiButton() { el.aiBtn.textContent = `🤖 AI ${AI.label()}`; }
+renderAiButton();
+
+function showAi(text, cls = "") {
+  el.aiBox.hidden = false;
+  el.aiBox.className = `ai-box ${cls}`;
+  el.aiText.textContent = text;
+}
+
+function aiContext() {
+  return { lesson: lesson().name, steps: lesson().steps.map((s) => s.text), stepIndex: state.step };
+}
+
+// 文字をそのまま探す正規表現（AI の答えに含まれる記号は文字として扱う。空白は文字認識が取り除くので消す）
+function textRegex(text) {
+  return new RegExp(text.replace(/\s+/g, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+}
+
+// 画面から label の文字を探して光らせる。文字認識で見つからないとき（1文字のボタン名などは読み落としやすい）は、
+// AI が答えたおおよその範囲（aiBox）を使う
+async function highlightText(label, say, aiBox = null) {
+  if (!label && !aiBox) return;
+  const token = state.stepToken;
+  const read = ocr.on && label ? await readScreen() : null;
+  if (token !== state.stepToken) return;
+  const boxes = read ? findAll(read, textRegex(label)).sort((a, b) => a.y0 - b.y0) : [];
+  if (boxes.length) {
+    state.target = { box: boxes[0], name: label, say };
+    state.targetMissing = null;
+  } else if (aiBox) {
+    state.target = { box: aiBox, name: `${label || "ここ"}（AI の推定）`, say };
+    state.targetMissing = null;
+  } else {
+    state.targetMissing = label;
+  }
+  renderTarget();
+  refreshGuide();
+}
+
+// 「🤖 AIに聞く」: 今の画面を見せて、次にやることを聞く
+el.askBtn.addEventListener("click", async () => {
+  if (!AI.enabled()) {
+    // ミニ窓から押されたときは設定画面が元のページの裏に開いてしまうので、案内だけ出す
+    if (state.pip) showAi("AI が OFF です。ブラウザの「🤖 AI」ボタンから設定してください。", "error");
+    else openAiDialog();
+    return;
+  }
+  if (!state.stream) { showAi("先に「▶ はじめる」で PowerPoint の画面を共有してください。", "error"); return; }
+  const frame = await grabFrame();
+  if (!frame) return;
+  const token = state.stepToken;
+  showAi("画面を見ています…", "busy");
+  try {
+    const r = await AI.nextAction(frame, aiContext());
+    if (token !== state.stepToken) return;
+    showAi(r.reason ? `${r.say}（${r.reason}）` : r.say);
+    speak(r.say);
+    addLog(`🤖 ${r.say}`);
+    if (r.target || r.box) highlightText(r.target, `光っている${r.target ? `「${r.target}」` : "場所"}: ${r.say}`, r.box);
+  } catch (e) {
+    showAi(`AI に聞けませんでした: ${e.message}`, "error");
+  } finally {
+    frame.close();
+  }
+});
+
+// 「できた？」に AI のひとことを添える（失敗しても「できた？」だけで進められるので、黙って諦める）
+async function commentByAI(token) {
+  const frame = await grabFrame();
+  if (!frame) return;
+  try {
+    const r = await AI.nextAction(frame, aiContext());
+    if (token !== state.stepToken || el.confirmBox.hidden) return;
+    if (r.done) {
+      showAi(`できているようです。${r.reason}`);
+    } else {
+      showAi(`まだのようです。${r.say}`);
+      if (r.target || r.box) highlightText(r.target, `光っている${r.target ? `「${r.target}」` : "場所"}: ${r.say}`, r.box);
+    }
+  } catch (e) {
+    console.warn("AI のひとことを付けられませんでした:", e.message);
+  } finally {
+    frame.close();
+  }
+}
+
+// ─── AI の設定画面 ────────────────────────────────
+el.aiBtn.addEventListener("click", openAiDialog);
+el.aiClose.addEventListener("click", () => el.aiDialog.close());
+
+async function openAiDialog() {
+  const s = AI.settings;
+  for (const r of el.aiDialog.querySelectorAll("input[name=provider]")) r.checked = r.value === s.provider;
+  el.geminiKey.value = s.geminiKey;
+  el.geminiModel.value = s.geminiModel || AI.DEFAULT_GEMINI_MODEL;
+  el.aiTestResult.textContent = "";
+  el.aiDialog.showModal();
+  await renderBuiltinState();
+}
+
+async function renderBuiltinState() {
+  const status = await AI.builtinStatus();
+  el.builtinState.textContent = {
+    available: "この端末で使えます。画面の画像は端末の外に出ません。",
+    downloadable: "使えます。初回だけ「準備する」でモデル（約3〜4GB）を取り込みます。画像は端末の外に出ません。",
+    downloading: "モデルを取り込み中です…",
+    unavailable: "この端末・ブラウザでは使えません（Chrome 148 以降、空き容量 20GB 以上、メモリなどの条件があります）。",
+  }[status] ?? status;
+  el.builtinRadio.disabled = status === "unavailable";
+  el.builtinPrepare.hidden = status !== "downloadable" && status !== "downloading";
+}
+
+// モデルの取り込みはボタンを押した直後にしか始められない（ブラウザの制限）
+el.builtinPrepare.addEventListener("click", async () => {
+  el.builtinPrepare.disabled = true;
+  try {
+    await AI.prepareBuiltin((p) => { el.builtinState.textContent = `モデルを取り込み中… ${Math.round(p * 100)}%`; });
+    el.builtinState.textContent = "準備できました。この端末で使えます。";
+    el.builtinPrepare.hidden = true;
+  } catch (e) {
+    el.builtinState.textContent = `準備できませんでした: ${e.message}`;
+  } finally {
+    el.builtinPrepare.disabled = false;
+  }
+});
+
+function readAiForm() {
+  const provider = el.aiDialog.querySelector("input[name=provider]:checked")?.value ?? "off";
+  return {
+    provider,
+    geminiKey: el.geminiKey.value.trim(),
+    geminiModel: el.geminiModel.value.trim() || AI.DEFAULT_GEMINI_MODEL,
+  };
+}
+
+el.aiSave.addEventListener("click", () => {
+  const next = readAiForm();
+  if (next.provider === "gemini" && !next.geminiKey) {
+    el.aiTestResult.textContent = "Gemini を使うには APIキーを入力してください。";
+    return;
+  }
+  AI.save(next);
+  renderAiButton();
+  addLog(`AI: ${AI.label()}`);
+  el.aiDialog.close();
+});
+
+// 接続テスト: 実際に短い手順を1つ作ってもらう（画面の画像は送らない）
+el.aiTest.addEventListener("click", async () => {
+  const before = { ...AI.settings };
+  AI.save(readAiForm());
+  el.aiTestResult.textContent = "テスト中…";
+  try {
+    const r = await AI.makeLesson("スライドにタイトルを入れたい");
+    el.aiTestResult.textContent = `✓ つながりました（「${r.name}」の手順を ${r.steps.length} 個作れました）`;
+  } catch (e) {
+    el.aiTestResult.textContent = `✗ ${e.message}`;
+  } finally {
+    AI.save(before);   // 保存は「保存」を押したときだけ
+  }
+});
+
+// ─── やりたいことから手順を作る ──────────────────────
+el.makeBtn.addEventListener("click", () => {
+  if (!AI.enabled()) { openAiDialog(); return; }
+  el.makeResult.textContent = "";
+  el.makeDialog.showModal();
+  el.goalInput.focus();
+});
+el.makeClose.addEventListener("click", () => el.makeDialog.close());
+el.goalInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) el.makeGo.click(); });
+
+el.makeGo.addEventListener("click", async () => {
+  const goal = el.goalInput.value.trim();
+  if (!goal) return;
+  el.makeGo.disabled = true;
+  el.makeResult.textContent = "手順を作っています…";
+  try {
+    const made = await AI.makeLesson(goal);
+    const id = `ai-${Date.now()}`;
+    LESSONS[id] = lessonFromAI(made);
+    el.lessonSelect.append(new Option(LESSONS[id].name, id));
+    el.makeDialog.close();
+    loadLesson(id);
+  } catch (e) {
+    el.makeResult.textContent = `作れませんでした: ${e.message}`;
+  } finally {
+    el.makeGo.disabled = false;
+  }
+});
+
+// AI が作った手順を、このアプリのレッスンの形に直す。
+// 手順の正しさは保証できないので、完了は「新しく現れた文字」か「できた？」で確かめる
+function lessonFromAI(made) {
+  return {
+    name: `🤖 ${made.name}`,
+    steps: made.steps.map((s) => ({
+      text: s.text,
+      hint: s.hint || "AI が作った手順です。画面と違うときは「🤖 AIに聞く」を押してください。",
+      expect: "any",
+      ...(s.appears && {
+        check: { appearsNew: textRegex(s.appears) },
+        when: `「${s.appears}」が新しく表示されたら次へ`,
+      }),
+      ...(s.target && {
+        targets: [{ re: textRegex(s.target), name: s.target, say: `光っている「${s.target}」をクリック` }],
+      }),
+    })),
+  };
+}
 
 // ─── Mini window (Document Picture-in-Picture) ───────
 const canPip = "documentPictureInPicture" in window;
