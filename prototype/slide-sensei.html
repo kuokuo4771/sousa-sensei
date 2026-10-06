@@ -380,6 +380,68 @@
     color: var(--muted); padding: 24px;
   }
 
+  /* ─── Highlight guide（ミニ窓・案内パネル内の拡大表示） ─── */
+  .guide {
+    position: relative; border-radius: 10px; overflow: hidden;
+    background: #111; aspect-ratio: 2 / 1;
+  }
+  .guide canvas { width: 100%; height: 100%; display: block; }
+  .guide-box {
+    position: absolute; border: 3px solid var(--accent); border-radius: 6px;
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+    pointer-events: none; animation: guide-pulse 1.3s ease-in-out infinite;
+  }
+  @keyframes guide-pulse {
+    0%, 100% { outline: 0 solid color-mix(in oklab, var(--accent) 55%, transparent); }
+    50%      { outline: 7px solid color-mix(in oklab, var(--accent) 30%, transparent); }
+  }
+  .guide-say {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 18px 12px 8px; font-size: 13px; font-weight: 700; color: white;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  }
+  .guide-say::before { content: "👉 "; }
+  .guide-missing {
+    font-size: 12px; padding: 8px 10px; border-radius: 8px;
+    background: var(--warn-soft); color: color-mix(in oklab, var(--warn) 60%, var(--ink));
+  }
+
+  /* 共有プレビュー上のハイライト */
+  .target-box {
+    position: absolute; border: 3px solid var(--accent); border-radius: 6px;
+    pointer-events: none; animation: guide-pulse 1.3s ease-in-out infinite;
+  }
+  .target-tag {
+    position: absolute; padding: 3px 10px; border-radius: 999px;
+    background: var(--accent); color: white; font-size: 12px; font-weight: 700;
+    white-space: nowrap; pointer-events: none; transform: translateY(calc(-100% - 6px));
+  }
+
+  /* 文字で確認できたときの演出 */
+  .step-card.flash { animation: card-flash 1s ease; }
+  @keyframes card-flash {
+    0%   { box-shadow: 0 0 0 0 transparent; }
+    25%  { box-shadow: 0 0 0 6px color-mix(in oklab, var(--success) 45%, transparent); background: var(--success-soft); }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  .done-emoji { font-size: 40px; animation: pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1); }
+  @keyframes pop { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* はじめの案内 */
+  .onboard { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; text-align: left; }
+  .onboard li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--ink-soft); }
+  .onboard .num {
+    flex: none; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 12px; font-weight: 700;
+    background: var(--accent); color: white;
+  }
+  .cta-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .secondary-cta {
+    padding: 12px 18px; border-radius: 10px; font-size: 15px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--panel); color: var(--ink);
+  }
+  .secondary-cta:hover { border-color: var(--muted); }
+
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -389,7 +451,7 @@
     <div class="brand">
       <span class="brand-mark">P</span>
       スライド先生
-      <span class="brand-sub">— AIなし（手動確認）モード</span>
+      <span class="brand-sub">— 画面を見て、次の一手を光らせて教える</span>
     </div>
     <div class="topbar-spacer"></div>
     <div class="capture-chip" id="captureChip">未共有</div>
@@ -397,7 +459,7 @@
       <label for="lessonSelect">レッスン</label>
       <select id="lessonSelect"></select>
     </div>
-    <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
+    <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、光らせる場所を探し、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
     <button class="icon-btn" id="pipBtn" title="案内を常に最前面の小窓に出す">📌 ミニ窓で表示</button>
     <button class="icon-btn" id="themeToggle" title="テーマ切替">🌙</button>
   </header>
@@ -407,22 +469,28 @@
     <section class="capture-panel" aria-label="画面キャプチャ">
       <div class="capture-header">
         <strong>共有画面プレビュー</strong>
-        <span class="dim">— 画面の変化を見て「できた？」と確認します</span>
+        <span class="dim">— 赤い枠が「次に操作する場所」です</span>
       </div>
-      <div class="capture-stage">
+      <div class="capture-stage" id="captureStage">
         <div class="empty" id="emptyState">
-          <div style="font-size: 48px;">🖥️</div>
-          <h2>PowerPointの画面を共有してください</h2>
-          <p>
-            「画面共有を開始」を押し、<strong>ウインドウ</strong>タブから
-            <strong>Microsoft PowerPoint</strong> を選んでください。
-            <br>共有したら「📌 ミニ窓で表示」で案内を PowerPoint の上に置けます。
-          </p>
-          <button class="primary-cta" id="startCaptureBtn">🎥 画面共有を開始</button>
+          <div style="font-size: 44px;">🖥️</div>
+          <h2>スライド先生へようこそ</h2>
+          <p>PowerPoint の画面を見ながら、次にやることを1つずつ、<br>操作する場所を光らせて教えます。</p>
+          <ol class="onboard">
+            <li><span class="num">1</span><span>PowerPoint（なければ「練習用画面」）を開いておく</span></li>
+            <li><span class="num">2</span><span>「画面共有を開始」を押し、<strong>ウインドウ</strong>（練習用画面なら<strong>タブ</strong>）から選ぶ</span></li>
+            <li><span class="num">3</span><span>「📌 ミニ窓で表示」で、案内を PowerPoint の横に置く</span></li>
+          </ol>
+          <div class="cta-row">
+            <button class="primary-cta" id="startCaptureBtn">🎥 画面共有を開始</button>
+            <button class="secondary-cta" id="practiceBtn">🧪 練習用画面を開く</button>
+          </div>
           <p style="font-size: 12px;">画像と文字認識はこのブラウザ内だけで処理し、外部へは送信しません。<br>
             （文字認識の部品と日本語データ 約2MB を初回だけ jsDelivr から読み込みます）</p>
         </div>
         <video id="captureVideo" autoplay muted playsinline hidden></video>
+        <div class="target-box" id="targetBox" hidden></div>
+        <div class="target-tag" id="targetTag" hidden></div>
       </div>
       <div class="capture-foot">
         <span class="stat" id="statMotion">増減 —</span>
@@ -470,9 +538,17 @@
             <span class="expect-chip check-chip" id="checkChip" hidden></span>
           </div>
 
+          <div class="guide" id="guide" hidden>
+            <canvas id="guideCanvas" width="640" height="320"></canvas>
+            <div class="guide-box" id="guideBox"></div>
+            <div class="guide-say" id="guideSay"></div>
+          </div>
+          <div class="guide-missing" id="guideMissing" hidden></div>
+
           <div class="done-card" id="doneCard" hidden>
-            <strong>🎉 レッスン完了！</strong>
-            お疲れさまでした。別のレッスンも試してみてください。
+            <div class="done-emoji">🎉</div>
+            <strong>レッスン完了！</strong>
+            お疲れさまでした。「次のレッスン →」で続けられます。
           </div>
 
           <div class="confirm" id="confirmBox" hidden>
@@ -515,27 +591,41 @@
 // check: 画面の文字でステップ完了を確かめる条件（文字認識 ON のとき）。満たせば確認なしで次へ
 //   appears: この文字が画面にあれば完了
 //   gone   : ステップ開始時にあったこの文字が消えたら完了
-//   grows  : ステップ開始時になかった文字（2文字の並び）がこの数以上現れたら完了
+//   grows  : ステップ開始時になかった文字（2文字の並び）がリボンより下にこの数以上現れたら完了
+// targets: 画面上で光らせる場所の候補。上から順に探し、最初に見つかったものを使う
+//   re: 探す文字 / name: 見つからないときの表示名 / say: 案内文
+// keep: 前のステップで光らせた場所をそのまま使い、案内文だけ差し替える（文字が消える操作の続きなど）
 // 正規表現の [力カ] は、「入力」の「力」をカタカナの「カ」と読み違えても通すため
+const TITLE_PH = /(?<!サブ)タイトルを入[力カ]/;
+const SUBTITLE_PH = /サブタイトルを入[力カ]/;
+
 const LESSONS = {
   "first-slide": {
     name: "はじめてのスライド",
     steps: [
       { text: "PowerPointで新規プレゼンテーションを開く",
-        hint: "すでに白紙のスライドが開いていれば「次へ」で進めます。", expect: "any",
+        hint: "「新しいプレゼンテーション」を選ぶと白紙のスライドが開きます。開いていれば自動で次へ進みます。",
+        expect: "any",
         check: { appears: /タイトルを入[力カ]/ }, when: "「タイトルを入力」が表示されたら次へ" },
-      { text: "スライド上部の「タイトルを入力」枠をクリック",
+      { text: "スライドの「タイトルを入力」をクリック",
         hint: "点線の枠の中をクリックすると、文字が消えてカーソルが点滅します。", expect: "small",
-        check: { gone: /(?<!サブ)タイトルを入[力カ]/ }, when: "「タイトルを入力」の文字が消えたら次へ" },
+        check: { gone: TITLE_PH }, when: "「タイトルを入力」の文字が消えたら次へ",
+        targets: [{ re: TITLE_PH, name: "タイトルを入力", say: "光っている「タイトルを入力」をクリック" }] },
       { text: "タイトルを入力する",
         hint: "例:「新しい企画のご提案」。入力が終わったら少し手を止めてください。", expect: "small",
-        check: { grows: 3 }, when: "文字が3文字以上増えたら次へ" },
-      { text: "「サブタイトルを入力」枠をクリックし、1〜2文入力する",
+        check: { grows: 3 }, when: "文字が3文字以上増えたら次へ",
+        keep: "光っている枠にタイトルを入力" },
+      { text: "「サブタイトルを入力」をクリックして、1〜2文入力する",
         hint: "タイトルの下にある枠です。", expect: "small",
-        check: { gone: /サブタイトルを入[力カ]/, grows: 3 }, when: "「サブタイトルを入力」が消えて文字が増えたら次へ" },
+        check: { gone: SUBTITLE_PH, grows: 3 }, when: "「サブタイトルを入力」が消えて文字が増えたら次へ",
+        targets: [{ re: SUBTITLE_PH, name: "サブタイトルを入力", say: "光っている「サブタイトルを入力」をクリックして入力" }] },
       { text: "「ホーム」タブの「新しいスライド」で2枚目を追加する",
         hint: "左端のスライド一覧に2枚目が増えれば成功です。", expect: "medium",
-        check: { appears: /テキストを入[力カ]/ }, when: "2枚目の「テキストを入力」が表示されたら次へ" },
+        check: { appears: /テキストを入[力カ]/ }, when: "2枚目の「テキストを入力」が表示されたら次へ",
+        targets: [
+          { re: /新しいスライド/, name: "新しいスライド", say: "光っている「新しいスライド」をクリック" },
+          { re: /ホーム/, name: "ホーム", say: "まず光っている「ホーム」タブを開く" },
+        ] },
     ],
   },
   "insert-shape": {
@@ -544,12 +634,18 @@ const LESSONS = {
       { text: "リボンの「挿入」タブに切り替える",
         hint: "画面上部のタブの並びにあります。", expect: "small",
         check: { appears: /SmartArt|ワードアート|ヘッダーとフッター|スライド番号/ },
-        when: "「ワードアート」など挿入タブのボタンが表示されたら次へ" },
-      { text: "「図形」ボタンから四角形を選び、スライド上でドラッグして描く",
+        when: "「ワードアート」など挿入タブのボタンが表示されたら次へ",
+        targets: [{ re: /挿入/, name: "挿入", say: "光っている「挿入」タブをクリック" }] },
+      { text: "「図形」から四角形を選び、スライド上でドラッグして描く",
         hint: "図形一覧が開いたら「四角形」の最初のアイコンを選びます。", expect: "small",
-        check: { appears: /図形の書式/ }, when: "「図形の書式」タブが表示されたら次へ" },
-      { text: "図形を選んだまま「図形の書式」タブで塗りつぶしの色を変える",
-        hint: "「図形の塗りつぶし」の▼から色を選びます。", expect: "small" },
+        check: { appears: /図形の書式/ }, when: "「図形の書式」タブが表示されたら次へ",
+        targets: [{ re: /図形(?!の)/, name: "図形", say: "光っている「図形」をクリックして四角形を選ぶ" }] },
+      { text: "「図形の書式」タブで塗りつぶしの色を変える",
+        hint: "「図形の塗りつぶし」の▼から好きな色を選びます。", expect: "small",
+        targets: [
+          { re: /図形の塗りつぶし/, name: "図形の塗りつぶし", say: "光っている「図形の塗りつぶし」から色を選ぶ" },
+          { re: /図形の書式/, name: "図形の書式", say: "まず光っている「図形の書式」タブを開く" },
+        ] },
       { text: "図形をドラッグして中央付近に配置する",
         hint: "中央に近づくと赤い点線のガイドが出ます。", expect: "small" },
     ],
@@ -560,9 +656,10 @@ const LESSONS = {
       { text: "リボンの「デザイン」タブに切り替える",
         hint: "「挿入」の右隣あたりにあります。", expect: "small",
         check: { appears: /スライドのサイズ|背景の書式設定|デザイナー/ },
-        when: "「スライドのサイズ」などデザインタブのボタンが表示されたら次へ" },
+        when: "「スライドのサイズ」などデザインタブのボタンが表示されたら次へ",
+        targets: [{ re: /デザイン/, name: "デザイン", say: "光っている「デザイン」タブをクリック" }] },
       { text: "テーマ一覧から1つ選んで適用する",
-        hint: "クリックするとスライド全体のデザインが変わります。", expect: "medium" },
+        hint: "「デザイン」タブ左側に並んだテーマの絵をクリックします。", expect: "medium" },
       { text: "別のテーマも適用して見比べる",
         hint: "気に入らなければ元のテーマに戻してもOKです。", expect: "medium" },
       { text: "使うテーマを1つに決める",
@@ -608,21 +705,21 @@ const state = {
   noticeUntil: 0,       // この時刻までは見守り表示で上書きしない
   pip: null,
   stepToken: 0,         // ステップが変わるたびに増やす（読み取り中にステップが変わったら結果を捨てる）
-  stepText: null,       // ステップ開始時に画面から読んだ文字（まだなら null）。1つ前のステップ開始時の文字も含める
-  stepRead: "",         // このステップ開始時に読んだ文字そのもの
-  prevStepRead: "",     // 1つ前のステップ開始時に読んだ文字そのもの
+  startRead: null,      // このステップ開始時に読んだ画面の文字
+  prevStartRead: null,  // 1つ前のステップ開始時に読んだ画面の文字（読み落とし対策で一緒に使う）
+  target: null,         // 光らせる場所 { box: {x0,y0,x1,y1}（画面に対する割合）, name, say }
 };
 
 // ─── DOM refs（ミニ窓へ移動しても使えるよう起動時に取得） ─
-const $ = (s) => document.querySelector(s);
 const el = Object.fromEntries([
-  "captureChip", "lessonSelect", "pipBtn", "themeToggle", "emptyState", "captureVideo",
-  "startCaptureBtn", "stopCaptureBtn", "pauseBtn", "statMotion", "statNet", "statChanges",
-  "tutorHome", "tutorHomeNote", "tutor", "tutorLessonName", "tutorStatus",
-  "progressTitle", "progressCount", "progressFill", "stepCard", "stepNum", "stepText",
-  "stepHint", "expectChip", "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
-  "watch", "log", "backBtn", "restartBtn", "nextBtn",
-  "ocrBtn", "checkChip", "ocrMeta", "ocrText",
+  "captureChip", "lessonSelect", "ocrBtn", "pipBtn", "themeToggle", "captureStage", "emptyState",
+  "captureVideo", "targetBox", "targetTag", "startCaptureBtn", "practiceBtn", "stopCaptureBtn",
+  "pauseBtn", "statMotion", "statNet", "statChanges", "tutorHome", "tutorHomeNote", "tutor",
+  "tutorLessonName", "tutorStatus", "progressTitle", "progressCount", "progressFill",
+  "stepCard", "stepNum", "stepText", "stepHint", "expectChip", "checkChip",
+  "guide", "guideCanvas", "guideBox", "guideSay", "guideMissing",
+  "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn", "watch", "log",
+  "ocrMeta", "ocrText", "backBtn", "restartBtn", "nextBtn",
 ].map((id) => [id, document.getElementById(id)]));
 
 const gridCanvas = document.createElement("canvas");
@@ -662,6 +759,7 @@ function render() {
   }
   el.backBtn.disabled = state.step === 0;
   el.nextBtn.textContent = finished ? "次のレッスン →" : "次へ →";
+  renderTarget();
 }
 
 function loadLesson(id) {
@@ -671,28 +769,33 @@ function loadLesson(id) {
   goTo(0);
 }
 
-// knownText: 移動先ステップ開始時の画面の文字が分かっていれば渡す（読み直しを省く）
-function goTo(step, knownText = null) {
+// knownRead: 移動先ステップ開始時の画面の文字が分かっていれば渡す（読み直しを省く）
+function goTo(step, knownRead = null) {
   state.step = Math.max(0, Math.min(step, lesson().steps.length));
   state.stepToken++;
-  state.prevStepRead = state.stepRead;
-  state.stepRead = "";
-  state.stepText = null;
+  state.prevStartRead = state.startRead;
+  state.startRead = null;
+  const next = currentStep();
+  state.target = next?.keep && state.target ? { ...state.target, say: next.keep } : null;
+  state.targetMissing = null;
   hideConfirm();
   resetBase();
   render();
   if (state.step >= lesson().steps.length) addLog("レッスン完了 🎉");
   if (state.stream && !state.paused) setWatch("見守り中 — 操作してみてください");
-  readStepStart(knownText);
+  readStepStart(knownRead);
 }
 
 // 文字で確認できたので、確認なしで次へ進む
-function autoAdvance(text) {
+function autoAdvance(read) {
   addLog(`✓ ステップ ${state.step + 1} 完了（文字で確認）`);
-  goTo(state.step + 1, text);
+  goTo(state.step + 1, read);
+  el.stepCard.classList.remove("flash");
+  void el.stepCard.offsetWidth;   // アニメーションをやり直すため
+  el.stepCard.classList.add("flash");
   if (state.step < lesson().steps.length) {
-    setWatch("文字で確認できたので、次のステップへ進みました。");
-    state.noticeUntil = Date.now() + 6000;
+    setWatch("できました！ 次のステップへ進みました。");
+    state.noticeUntil = Date.now() + 5000;
   }
 }
 
@@ -728,6 +831,9 @@ el.nextBtn.addEventListener("click", () => {
   }
   addLog(`→ ステップ ${state.step + 1} をスキップ`);
   goTo(state.step + 1);
+});
+el.practiceBtn.addEventListener("click", () => {
+  window.open("practice-slide.html", "practice-slide", "width=1280,height=800");
 });
 
 // ─── Log / status ────────────────────────────────────
@@ -797,6 +903,8 @@ function stopCapture() {
   el.captureChip.textContent = "未共有";
   el.captureChip.classList.remove("on");
   hideConfirm();
+  state.target = null;
+  renderTarget();
   setStatus("共有待ち");
   setWatch("画面共有を開始すると、変化を見守ります。", "");
 }
@@ -839,11 +947,8 @@ async function grabFrame() {
   return { source: v, width: v.videoWidth, height: v.videoHeight, close: () => {} };
 }
 
-async function grabGray() {
-  const frame = await grabFrame();
-  if (!frame) return null;
+function toGray(frame) {
   gridCtx.drawImage(frame.source, 0, 0, GRID_W, GRID_H);
-  frame.close();
   const px = gridCtx.getImageData(0, 0, GRID_W, GRID_H).data;
   const gray = new Uint8Array(GRID_W * GRID_H);
   for (let i = 0; i < gray.length; i++) {
@@ -852,7 +957,7 @@ async function grabGray() {
   return gray;
 }
 
-// 変化したセルの割合 (%)。つながった変化セルの塊ごとに数え、
+// 変化したセルの割合 (%)。近くの変化セルを塊にまとめ、
 // CURSOR_CELLS 以下の小さな塊（カーソル・キャレットなど）は数えない
 function diffRatio(a, b) {
   const n = a.length;
@@ -882,9 +987,12 @@ function diffRatio(a, b) {
 // 動きが止まるのを待ってから、最後に確定した画面と比べる
 async function sample() {
   if (!state.stream || state.paused) return;
-  const gray = await grabGray();
-  if (!state.stream || state.paused) return;
-  if (!gray) { schedule(500); return; }
+  const frame = await grabFrame();
+  if (!state.stream || state.paused) { frame?.close(); return; }
+  if (!frame) { schedule(500); return; }
+  const gray = toGray(frame);
+  drawGuide(frame);
+  frame.close();
 
   state.prevGray = gray;
   if (!state.baseGray) {
@@ -921,23 +1029,27 @@ async function onChange(net, band) {
   const step = currentStep();
   if (!step) return;
 
-  // 文字の条件があれば、まず画面の文字で確かめる。満たせば確認なしで次へ
-  if (ocr.on && step.check) {
+  // 画面の文字を読み、光らせる場所を更新する。完了の条件があれば確かめ、満たせば確認なしで次へ
+  if (ocr.on && (step.check || step.targets)) {
     const token = state.stepToken;
-    setWatch("文字を確認中…");
-    let text = await readScreen();
+    if (step.check) setWatch("文字を確認中…");
+    let read = await readScreen();
     if (token !== state.stepToken) return;   // 読んでいる間にステップが変わった
-    let passed = text !== null && checkPassed(step.check, state.stepText, text);
-    // 「消えた」「増えた」は読み落としでも満たしてしまうので、もう一度読んで確かめる
-    if (passed && (step.check.gone || step.check.grows)) {
-      text = await readScreen();
-      if (token !== state.stepToken) return;
-      passed = text !== null && checkPassed(step.check, state.stepText, text);
+    if (step.check) {
+      let passed = read !== null && checkPassed(step.check, stepBefore(), read);
+      // 「消えた」「増えた」はツールチップ等が一時的に重なっても満たしてしまうので、もう一度読んで確かめる
+      if (passed && (step.check.gone || step.check.grows)) {
+        read = await readScreen();
+        if (token !== state.stepToken) return;
+        passed = read !== null && checkPassed(step.check, stepBefore(), read);
+      }
+      // 完了したときは光らせる場所を探し直さない（次のステップが同じ場所を使う keep のため）
+      if (passed) {
+        autoAdvance(read);
+        return;
+      }
     }
-    if (passed) {
-      autoAdvance(text);
-      return;
-    }
+    if (read) updateTarget(read);
   }
 
   const need = EXPECT_LEVEL[step.expect];
@@ -954,6 +1066,9 @@ async function onChange(net, band) {
 const TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
 const OCR_LANG_PATH = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/jpn@1/4.0.0_best_int";
 const OCR_MAX_WIDTH = 1920;       // これより大きいフレームは縮小して読む（速度のため）
+const OCR_BINARY = 165;           // この明るさ未満を黒にして読む (0-255)
+// リボンにあるボタン名。これより下を「スライド側」とみなす（タブ切替で増えた文字を入力と数えないため）
+const RIBBON_WORDS = /ホーム|挿入|描画|デザイン|貼り付け|新しいスライド|レイアウト|図形|テキストボックス|配置|SmartArt|ワードアート|スライドのサイズ|背景の書式設定/;
 
 const ocr = { on: true, worker: null, loading: null, queue: Promise.resolve() };
 
@@ -991,7 +1106,10 @@ function ensureOcr() {
   return ocr.loading;
 }
 
-// 今の画面の文字を読み、空白を除いた文字列を返す（読めなければ null）。一度に1つずつ順番に処理する
+// 今の画面の文字を読む（読めなければ null）。一度に1つずつ順番に処理する
+//   text : 画面全体の文字（空白なし）
+//   body : リボンより下の文字
+//   words: [{ t, x0, y0, x1, y1 }]（位置は画面に対する割合 0〜1）
 function readScreen() {
   const run = async () => {
     const worker = await ensureOcr();
@@ -1002,17 +1120,31 @@ function readScreen() {
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(frame.width * scale);
     canvas.height = Math.round(frame.height * scale);
-    const ctx = canvas.getContext("2d");
-    // 白黒＋コントラスト強調で、薄い灰色のプレースホルダーを読みやすくし、点線枠のノイズを抑える
-    ctx.filter = "grayscale(1) contrast(2.5)";
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.filter = "grayscale(1)";
     ctx.drawImage(frame.source, 0, 0, canvas.width, canvas.height);
     frame.close();
+    // 決まった明るさで白黒にする。薄い灰色のプレースホルダー（約136）は黒、点線枠（約170〜190）は白になる。
+    // 文字認識に任せると画面全体で境目を決めるため、黒い文字が増えると灰色の文字が白に飛んで読み落とす
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const px = img.data;
+    for (let i = 0; i < px.length; i += 4) px[i] = px[i + 1] = px[i + 2] = px[i] < OCR_BINARY ? 0 : 255;
+    ctx.putImageData(img, 0, 0);
     const started = performance.now();
     const { data } = await worker.recognize(canvas);
-    const text = data.text.replace(/\s+/g, "");
-    el.ocrMeta.textContent = `（${((performance.now() - started) / 1000).toFixed(1)}秒・${text.length}文字）`;
-    el.ocrText.textContent = text || "（文字が見つかりませんでした）";
-    return text;
+    const words = data.words
+      .map((w) => ({
+        t: w.text.replace(/\s+/g, ""),
+        x0: w.bbox.x0 / canvas.width, y0: w.bbox.y0 / canvas.height,
+        x1: w.bbox.x1 / canvas.width, y1: w.bbox.y1 / canvas.height,
+      }))
+      .filter((w) => w.t);
+    const read = { words, text: words.map((w) => w.t).join("") };
+    const ribbonBottom = Math.max(0, ...findAll(read, RIBBON_WORDS).filter((b) => b.y1 < 0.5).map((b) => b.y1));
+    read.body = words.filter((w) => (w.y0 + w.y1) / 2 > ribbonBottom).map((w) => w.t).join("");
+    el.ocrMeta.textContent = `（${((performance.now() - started) / 1000).toFixed(1)}秒・${read.text.length}文字）`;
+    el.ocrText.textContent = read.text || "（文字が見つかりませんでした）";
+    return read;
   };
   const result = ocr.queue.then(run, run).catch((e) => {
     addLog(`⚠ 文字認識エラー: ${e.message}`);
@@ -1022,14 +1154,42 @@ function readScreen() {
   return result;
 }
 
-// 文字の条件を満たしているか。before はステップ開始時に読んだ文字（まだ読めていなければ null）
+// 読んだ文字の中から正規表現に一致する場所をすべて探し、その範囲（割合）を返す。
+// 文字認識は「新しい」「スラ」「イド」のように細切れで返すので、つなげて探してから位置をまとめる
+function findAll(read, re) {
+  const g = new RegExp(re.source, re.flags.includes("g") ? re.flags : re.flags + "g");
+  const spans = [];
+  let joined = "";
+  for (const w of read.words) {
+    spans.push({ start: joined.length, end: joined.length + w.t.length, w });
+    joined += w.t;
+  }
+  const boxes = [];
+  for (const m of joined.matchAll(g)) {
+    if (!m[0]) continue;
+    const hit = spans.filter((s) => s.end > m.index && s.start < m.index + m[0].length).map((s) => s.w);
+    boxes.push({
+      x0: Math.min(...hit.map((w) => w.x0)), y0: Math.min(...hit.map((w) => w.y0)),
+      x1: Math.max(...hit.map((w) => w.x1)), y1: Math.max(...hit.map((w) => w.y1)),
+    });
+  }
+  return boxes;
+}
+
+// ステップ開始時にあった文字（このステップ＋1つ前のステップ開始時。文字認識の読み落とし対策）
+function stepBefore() { return [state.startRead, state.prevStartRead].filter(Boolean); }
+
+// 文字の条件を満たしているか
 function checkPassed(check, before, now) {
-  if (check.appears && !check.appears.test(now)) return false;
+  if (check.appears && !check.appears.test(now.text)) return false;
   if (check.gone) {
     // 最初にあった文字が消えたことを確かめる（最初に読めていなければ判定しない）
-    if (before === null || !check.gone.test(before) || check.gone.test(now)) return false;
+    if (!before.some((r) => check.gone.test(r.text)) || check.gone.test(now.text)) return false;
   }
-  if (check.grows && (before === null || newPairs(before, now) < check.grows)) return false;
+  if (check.grows) {
+    if (!before.length) return false;
+    if (newPairs(before.map((r) => r.body).join("|"), now.body) < check.grows) return false;
+  }
   return true;
 }
 
@@ -1043,26 +1203,118 @@ function newPairs(before, now) {
   return count;
 }
 
-// ステップ開始時の画面の文字を読んでおく（「消えた」「増えた」の比較用）。
+// ステップ開始時の画面の文字を読み、光らせる場所を探す（「消えた」「増えた」の比較にも使う）。
 // 「現れた」だけの条件なら、この時点で満たしていればそのまま次へ進む
-async function readStepStart(knownText = null) {
+async function readStepStart(known = null) {
   const step = currentStep();
-  if (!ocr.on || !state.stream || !step?.check) return;
+  if (!ocr.on || !state.stream || !step || !(step.check || step.targets)) return;
   const token = state.stepToken;
-  const text = knownText ?? await readScreen();
-  if (token !== state.stepToken || text === null) return;
-  // 文字認識はときどき一部を読み落とすので、1つ前のステップ開始時の文字も合わせて「開始時にあった文字」とする
-  state.stepRead = text;
-  state.stepText = `${text}|${state.prevStepRead}`;
-  if (!step.check.gone && !step.check.grows && checkPassed(step.check, text, text)) autoAdvance(text);
+  const read = known ?? await readScreen();
+  if (token !== state.stepToken || !read) return;
+  state.startRead = read;
+  updateTarget(read);
+  if (step.check && !step.check.gone && !step.check.grows && checkPassed(step.check, [read], read)) {
+    autoAdvance(read);
+  }
 }
 
 el.ocrBtn.addEventListener("click", () => {
   ocr.on = !ocr.on;
   setOcrState(ocr.on ? "ON" : "OFF");
+  if (!ocr.on) state.target = null;
   render();
   if (ocr.on && state.stream) readStepStart();
 });
+
+// ─── 光らせる場所（ハイライト） ──────────────────────
+// 候補を上から順に探し、見つかった中でいちばん上にあるもの（リボンのボタンなど）を光らせる
+function updateTarget(read) {
+  const step = currentStep();
+  if (!step?.targets) return;
+  for (const c of step.targets) {
+    const boxes = findAll(read, c.re).sort((a, b) => a.y0 - b.y0);
+    if (boxes.length) {
+      state.target = { box: boxes[0], name: c.name, say: c.say };
+      state.targetMissing = null;
+      renderTarget();
+      refreshGuide();
+      return;
+    }
+  }
+  state.target = null;
+  state.targetMissing = step.targets[0].name;
+  renderTarget();
+}
+
+// ハイライトの表示・非表示と、見つからないときのお知らせ
+function renderTarget() {
+  const t = state.target;
+  const show = !!t && !!state.stream && state.step < lesson().steps.length;
+  el.guide.hidden = !show;
+  el.targetBox.hidden = el.targetTag.hidden = !show;
+  if (show) el.guideSay.textContent = t.say;
+  const missing = !show && !!state.targetMissing && !!state.stream;
+  el.guideMissing.hidden = !missing;
+  if (missing) {
+    el.guideMissing.textContent =
+      `画面の中に「${state.targetMissing}」が見つかりませんでした。ウインドウを大きくするか、対象が見える状態にしてください。`;
+  }
+}
+
+// 光らせる場所が変わったら、次のサンプルを待たずにすぐ描き直す
+async function refreshGuide() {
+  const frame = await grabFrame();
+  if (!frame) return;
+  drawGuide(frame);
+  frame.close();
+}
+
+// 共有画面のハイライト周辺を拡大して案内パネル（ミニ窓）に描き、プレビュー上にも枠を出す
+function drawGuide(frame) {
+  const t = state.target;
+  if (!t || el.guide.hidden) return;
+  const fw = frame.width, fh = frame.height;
+  const cw = el.guideCanvas.width, ch = el.guideCanvas.height;
+  const bx0 = t.box.x0 * fw, by0 = t.box.y0 * fh, bx1 = t.box.x1 * fw, by1 = t.box.y1 * fh;
+  // 切り出す範囲: 対象の約4倍の幅（最低でも画面幅の30%）。案内パネルの縦横比に合わせる
+  let sw = Math.max((bx1 - bx0) * 4, fw * 0.3);
+  let sh = Math.max(sw * ch / cw, (by1 - by0) * 3);
+  sw = sh * cw / ch;
+  if (sw > fw) { sw = fw; sh = sw * ch / cw; }
+  if (sh > fh) { sh = fh; sw = sh * cw / ch; }
+  const sx = Math.min(Math.max((bx0 + bx1) / 2 - sw / 2, 0), fw - sw);
+  const sy = Math.min(Math.max((by0 + by1) / 2 - sh / 2, 0), fh - sh);
+  el.guideCanvas.getContext("2d").drawImage(frame.source, sx, sy, sw, sh, 0, 0, cw, ch);
+
+  const pad = Math.max(6, (by1 - by0) * 0.35);   // 文字の周りに少し余白をとる
+  Object.assign(el.guideBox.style, {
+    left: `${((bx0 - pad - sx) / sw) * 100}%`,
+    top: `${((by0 - pad - sy) / sh) * 100}%`,
+    width: `${((bx1 - bx0 + pad * 2) / sw) * 100}%`,
+    height: `${((by1 - by0 + pad * 2) / sh) * 100}%`,
+  });
+  placePreviewBox();
+}
+
+// 共有プレビュー（video）の上に、ハイライト枠と名前を重ねる
+function placePreviewBox() {
+  const t = state.target;
+  if (!t || el.targetBox.hidden || el.captureVideo.hidden) return;
+  const v = el.captureVideo.getBoundingClientRect();
+  const s = el.captureStage.getBoundingClientRect();
+  if (!v.width) return;
+  const pad = 4;
+  const left = v.left - s.left + t.box.x0 * v.width - pad;
+  const top = v.top - s.top + t.box.y0 * v.height - pad;
+  Object.assign(el.targetBox.style, {
+    left: `${left}px`, top: `${top}px`,
+    width: `${(t.box.x1 - t.box.x0) * v.width + pad * 2}px`,
+    height: `${(t.box.y1 - t.box.y0) * v.height + pad * 2}px`,
+  });
+  el.targetTag.textContent = t.name;
+  Object.assign(el.targetTag.style, { left: `${left}px`, top: `${top}px` });
+}
+window.addEventListener("resize", placePreviewBox);
 
 // ─── Mini window (Document Picture-in-Picture) ───────
 if (!("documentPictureInPicture" in window)) {
@@ -1073,7 +1325,7 @@ el.pipBtn.addEventListener("click", togglePip);
 
 async function togglePip() {
   if (state.pip) { state.pip.close(); return; }
-  const pip = await documentPictureInPicture.requestWindow({ width: 380, height: 540 });
+  const pip = await documentPictureInPicture.requestWindow({ width: 420, height: 720 });
   pip.document.title = "スライド先生";
   document.querySelectorAll("style, link[rel=stylesheet]").forEach((n) => pip.document.head.append(n.cloneNode(true)));
   syncTheme(pip.document);
