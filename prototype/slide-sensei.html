@@ -374,6 +374,20 @@
   /* ─── Mini window (Document Picture-in-Picture) ─── */
   body.pip { min-height: 0; }
   body.pip .tutor { height: 100vh; border: 0; border-radius: 0; box-shadow: none; }
+  /* ミニ窓では PowerPoint の邪魔にならないよう、手順・ハイライト・確認だけを出す */
+  body.pip .log-head, body.pip .log, body.pip .ocr-details,
+  body.pip .expect-chip, body.pip .tutor-lesson { display: none !important; }
+  body.pip .tutor-head { padding: 10px 14px; }
+  body.pip .tutor-body { padding: 12px; gap: 10px; }
+  body.pip .step-text { font-size: 15px; }
+
+  /* 「できた？」のあと自動で次へ進むまでの残り時間 */
+  .countdown { height: 4px; border-radius: 2px; background: color-mix(in oklab, var(--success) 20%, transparent); overflow: hidden; }
+  .countdown i { display: block; height: 100%; width: 100%; background: var(--success); transform-origin: left; }
+  @keyframes countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  /* ミニ窓を開けなかったときに「押してください」と目立たせる */
+  .icon-btn.attention { border-color: var(--accent); color: var(--accent); animation: pulse-dot 1s ease-in-out infinite; }
   .tutor-home-note {
     display: grid; place-items: center; text-align: center; gap: 8px;
     background: var(--panel); border: 1px dashed var(--border); border-radius: 12px;
@@ -460,6 +474,8 @@
       <select id="lessonSelect"></select>
     </div>
     <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、光らせる場所を探し、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
+    <button class="icon-btn" id="autoBtn" title="ON にすると「できた？」のあと数秒待って自動で次へ進みます（PowerPoint から手を離さずに進めるため）">⏩ 自動で次へ OFF</button>
+    <button class="icon-btn" id="voiceBtn" title="次の手順を音声で読み上げます">🔊 音声 ON</button>
     <button class="icon-btn" id="pipBtn" title="案内を常に最前面の小窓に出す">📌 ミニ窓で表示</button>
     <button class="icon-btn" id="themeToggle" title="テーマ切替">🌙</button>
   </header>
@@ -478,11 +494,11 @@
           <p>PowerPoint の画面を見ながら、次にやることを1つずつ、<br>操作する場所を光らせて教えます。</p>
           <ol class="onboard">
             <li><span class="num">1</span><span>PowerPoint（なければ「練習用画面」）を開いておく</span></li>
-            <li><span class="num">2</span><span>「画面共有を開始」を押し、<strong>ウインドウ</strong>（練習用画面なら<strong>タブ</strong>）から選ぶ</span></li>
-            <li><span class="num">3</span><span>「📌 ミニ窓で表示」で、案内を PowerPoint の横に置く</span></li>
+            <li><span class="num">2</span><span>「はじめる」を押し、<strong>ウインドウ</strong>（練習用画面なら<strong>タブ</strong>）から選ぶ</span></li>
+            <li><span class="num">3</span><span>PowerPoint が前に出るので、あとは操作するだけ。案内は最前面のミニ窓と音声で届きます</span></li>
           </ol>
           <div class="cta-row">
-            <button class="primary-cta" id="startCaptureBtn">🎥 画面共有を開始</button>
+            <button class="primary-cta" id="startCaptureBtn">▶ はじめる</button>
             <button class="secondary-cta" id="practiceBtn">🧪 練習用画面を開く</button>
           </div>
           <p style="font-size: 12px;">画像と文字認識はこのブラウザ内だけで処理し、外部へは送信しません。<br>
@@ -553,6 +569,7 @@
 
           <div class="confirm" id="confirmBox" hidden>
             <p id="confirmText"></p>
+            <div class="countdown" id="countdown" hidden><i id="countdownBar"></i></div>
             <div class="row">
               <button class="btn yes" id="yesBtn">できた ✓</button>
               <button class="btn" id="notYetBtn">まだ</button>
@@ -707,6 +724,7 @@ const state = {
   stepToken: 0,         // ステップが変わるたびに増やす（読み取り中にステップが変わったら結果を捨てる）
   startRead: null,      // このステップ開始時に読んだ画面の文字
   prevStartRead: null,  // 1つ前のステップ開始時に読んだ画面の文字（読み落とし対策で一緒に使う）
+  countdown: null,      // 「自動で次へ」の残り時間タイマー { host, id }
   target: null,         // 光らせる場所 { box: {x0,y0,x1,y1}（画面に対する割合）, name, say }
 };
 
@@ -720,7 +738,50 @@ const el = Object.fromEntries([
   "guide", "guideCanvas", "guideBox", "guideSay", "guideMissing",
   "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn", "watch", "log",
   "ocrMeta", "ocrText", "backBtn", "restartBtn", "nextBtn",
+  "autoBtn", "voiceBtn", "countdown", "countdownBar",
 ].map((id) => [id, document.getElementById(id)]));
+
+// ─── 設定（このブラウザに保存） ───────────────────────
+//   autoNext: 「できた？」のあと AUTO_NEXT_SEC 秒で自動的に次へ進む（初期値は OFF。確認は必ず出す）
+//   voice   : 次の手順や「できましたか？」を読み上げる
+const AUTO_NEXT_SEC = 4;
+const prefs = { autoNext: false, voice: true };
+try { Object.assign(prefs, JSON.parse(localStorage.getItem("slideSenseiPrefs") || "{}")); } catch { /* 保存できない環境では初期値のまま */ }
+function savePrefs() {
+  try { localStorage.setItem("slideSenseiPrefs", JSON.stringify(prefs)); } catch { /* 同上 */ }
+}
+function renderPrefs() {
+  el.autoBtn.textContent = `⏩ 自動で次へ ${prefs.autoNext ? "ON" : "OFF"}`;
+  el.voiceBtn.textContent = `${prefs.voice ? "🔊" : "🔈"} 音声 ${prefs.voice ? "ON" : "OFF"}`;
+}
+el.autoBtn.addEventListener("click", () => {
+  prefs.autoNext = !prefs.autoNext;
+  savePrefs();
+  renderPrefs();
+  if (!el.confirmBox.hidden) startCountdown();
+});
+el.voiceBtn.addEventListener("click", () => {
+  prefs.voice = !prefs.voice;
+  savePrefs();
+  renderPrefs();
+  if (!prefs.voice && "speechSynthesis" in window) speechSynthesis.cancel();
+});
+renderPrefs();
+
+// 案内を読み上げる（共有中だけ）。PowerPoint を操作しながら、画面を見に行かなくても次の手順が分かるように
+function speak(text) {
+  if (!prefs.voice || !state.stream || !("speechSynthesis" in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "ja-JP";
+  u.rate = 1.05;
+  const ja = speechSynthesis.getVoices().find((v) => v.lang.replace("_", "-").startsWith("ja"));
+  if (ja) u.voice = ja;
+  speechSynthesis.speak(u);
+}
+
+// タイマーはミニ窓が開いている間はそちらで動かす（裏のタブはタイマーが間引かれるため）
+function timerHost() { return state.pip && !state.pip.closed ? state.pip : window; }
 
 const gridCanvas = document.createElement("canvas");
 gridCanvas.width = GRID_W; gridCanvas.height = GRID_H;
@@ -770,7 +831,8 @@ function loadLesson(id) {
 }
 
 // knownRead: 移動先ステップ開始時の画面の文字が分かっていれば渡す（読み直しを省く）
-function goTo(step, knownRead = null) {
+// cheer: ステップを終えて進んだときは「できました」と読み上げてから次の手順を伝える
+function goTo(step, knownRead = null, cheer = false) {
   state.step = Math.max(0, Math.min(step, lesson().steps.length));
   state.stepToken++;
   state.prevStartRead = state.startRead;
@@ -781,15 +843,20 @@ function goTo(step, knownRead = null) {
   hideConfirm();
   resetBase();
   render();
-  if (state.step >= lesson().steps.length) addLog("レッスン完了 🎉");
+  if (!next) {
+    addLog("レッスン完了 🎉");
+    speak("レッスン完了です。お疲れさまでした。");
+  } else {
+    speak(`${cheer ? "できました。" : ""}ステップ${state.step + 1}。${next.text}`);
+  }
   if (state.stream && !state.paused) setWatch("見守り中 — 操作してみてください");
   readStepStart(knownRead);
 }
 
-// 文字で確認できたので、確認なしで次へ進む
-function autoAdvance(read) {
-  addLog(`✓ ステップ ${state.step + 1} 完了（文字で確認）`);
-  goTo(state.step + 1, read);
+// ステップを終えて次へ進む（how: 記録に残す確かめ方）
+function completeStep(how, read = null) {
+  addLog(`✓ ステップ ${state.step + 1} 完了${how ? `（${how}）` : ""}`);
+  goTo(state.step + 1, read, true);
   el.stepCard.classList.remove("flash");
   void el.stepCard.offsetWidth;   // アニメーションをやり直すため
   el.stepCard.classList.add("flash");
@@ -799,21 +866,44 @@ function autoAdvance(read) {
   }
 }
 
+// 文字で確認できたので、確認なしで次へ進む
+function autoAdvance(read) { completeStep("文字で確認", read); }
+
 // 今の画面を新しい基準にする（ステップ移動時）
 function resetBase() { state.baseGray = state.prevGray; state.prevNet = 0; }
 
 // ─── Confirm prompt ──────────────────────────────────
 function showConfirm(net, band) {
+  const wasOpen = !el.confirmBox.hidden;
   el.confirmText.textContent =
     `画面が変わりました（${BAND_NAME[band]}・${net.toFixed(2)}%）。このステップはできましたか？`;
   el.confirmBox.hidden = false;
+  if (!wasOpen) speak("できましたか？");
+  startCountdown();
 }
-function hideConfirm() { el.confirmBox.hidden = true; }
+function hideConfirm() {
+  stopCountdown();
+  el.confirmBox.hidden = true;
+}
 
-el.yesBtn.addEventListener("click", () => {
-  addLog(`✓ ステップ ${state.step + 1} 完了`);
-  goTo(state.step + 1);
-});
+// 「自動で次へ」が ON なら、残り時間のバーを出して AUTO_NEXT_SEC 秒後に次へ進む。
+// 操作が続いている間（画面が変化中）は、そのたびに最初から数え直す
+function startCountdown() {
+  stopCountdown();
+  el.countdown.hidden = !prefs.autoNext;
+  if (!prefs.autoNext) return;
+  el.countdownBar.style.animation = "none";
+  void el.countdownBar.offsetWidth;   // アニメーションをやり直すため
+  el.countdownBar.style.animation = `countdown ${AUTO_NEXT_SEC}s linear forwards`;
+  const host = timerHost();
+  state.countdown = { host, id: host.setTimeout(() => { state.countdown = null; completeStep("自動"); }, AUTO_NEXT_SEC * 1000) };
+}
+function stopCountdown() {
+  if (state.countdown) state.countdown.host.clearTimeout(state.countdown.id);
+  state.countdown = null;
+}
+
+el.yesBtn.addEventListener("click", () => completeStep(""));
 el.notYetBtn.addEventListener("click", () => {
   hideConfirm();
   addLog("まだ — 引き続き見守ります");
@@ -852,16 +942,57 @@ function setWatch(text, cls = "on") {
 function setStatus(text) { el.tutorStatus.textContent = text; }
 
 // ─── Screen capture ──────────────────────────────────
-el.startCaptureBtn.addEventListener("click", startCapture);
+el.startCaptureBtn.addEventListener("click", quickStart);
 el.stopCaptureBtn.addEventListener("click", stopCapture);
 el.pauseBtn.addEventListener("click", togglePause);
 
-async function startCapture() {
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { displaySurface: "window", frameRate: 5 },
-      audio: false,
+// 「はじめる」1回で、画面共有・ミニ窓・PowerPoint を前面へ、までを済ませる。
+// 画面共有とミニ窓はどちらも「ボタンを押した直後」にしか開けないので、待たずに続けて呼ぶ
+async function quickStart() {
+  const sharing = requestShare();
+  let pipOpened = null;
+  if (canPip && !state.pip) {
+    pipOpened = openPip().catch((e) => {
+      console.warn(e);
+      return null;
     });
+  }
+  let stream;
+  try {
+    stream = await sharing;
+  } catch (e) {
+    if (pipOpened && await pipOpened) state.pip?.close();   // 共有をやめたらミニ窓も閉じて元に戻す
+    const msg = e.name === "NotAllowedError"
+      ? "共有がキャンセルされたか、macOS の画面収録が許可されていません。"
+      : `${e.name}: ${e.message}`;
+    setWatch(msg, "small");
+    return;
+  }
+  await startCapture(stream);
+  if (pipOpened && !(await pipOpened)) {
+    // 同時に開けなかったときは、もう1回押してもらう
+    el.pipBtn.classList.add("attention");
+    addLog("📌「ミニ窓で表示」を押すと、案内を最前面に出せます");
+  }
+}
+
+function requestShare() {
+  const controller = "CaptureController" in window ? new CaptureController() : null;
+  return navigator.mediaDevices.getDisplayMedia({
+    video: { displaySurface: "window", frameRate: 5 },
+    audio: false,
+    selfBrowserSurface: "exclude",   // このページ自身は選べないようにする
+    surfaceSwitching: "include",     // Chrome の共有バーから、共有するウインドウを切り替えられるようにする
+    ...(controller && { controller }),
+  }).then((stream) => {
+    // 選んだウインドウ（PowerPoint）を前面に出す。共有が決まった直後にしか呼べない
+    try { controller?.setFocusBehavior("focus-captured-surface"); } catch { /* 古い Chrome では何もしない */ }
+    return stream;
+  });
+}
+
+async function startCapture(stream) {
+  try {
     state.stream = stream;
     const track = stream.getVideoTracks()[0];
     track.addEventListener("ended", stopCapture);
@@ -884,13 +1015,12 @@ async function startCapture() {
     setStatus("見守り中");
     addLog(`共有開始: ${track.label || "ウインドウ"}`);
     warnedHidden = false;
+    const step = currentStep();
+    if (step) speak(`ステップ${state.step + 1}。${step.text}`);
     if (ocr.on) ensureOcr().then(() => readStepStart());
     schedule(500);
   } catch (e) {
-    const msg = e.name === "NotAllowedError"
-      ? "共有がキャンセルされたか、macOS の画面収録が許可されていません。"
-      : `${e.name}: ${e.message}`;
-    setWatch(msg, "small");
+    setWatch(`${e.name}: ${e.message}`, "small");
   }
 }
 
@@ -927,10 +1057,9 @@ function togglePause() {
   }
 }
 
-// ミニ窓が開いている間はそちらのタイマーを使う（裏のタブはタイマーが間引かれるため）
 function schedule(delay = INTERVAL_MS) {
   clearSchedule();
-  const host = state.pip && !state.pip.closed ? state.pip : window;
+  const host = timerHost();
   state.timer = { host, id: host.setTimeout(sample, delay) };
 }
 function clearSchedule() {
@@ -1016,6 +1145,7 @@ async function sample() {
 
   if (growth >= STABLE_MAX) {
     setWatch("変化中… 操作が落ち着くのを待っています", "moving");
+    if (!el.confirmBox.hidden) startCountdown();   // 操作中は自動で進まない
   } else if (net >= THRESHOLD) {
     state.baseGray = gray;
     state.prevNet = 0;
@@ -1321,15 +1451,20 @@ function placePreviewBox() {
 window.addEventListener("resize", placePreviewBox);
 
 // ─── Mini window (Document Picture-in-Picture) ───────
-if (!("documentPictureInPicture" in window)) {
+const canPip = "documentPictureInPicture" in window;
+if (!canPip) {
   el.pipBtn.disabled = true;
   el.pipBtn.title = "このブラウザはミニ窓に対応していません（Chrome 116 以降で使えます）";
 }
-el.pipBtn.addEventListener("click", togglePip);
+el.pipBtn.addEventListener("click", () => {
+  el.pipBtn.classList.remove("attention");
+  if (state.pip) state.pip.close();
+  else openPip();
+});
 
-async function togglePip() {
-  if (state.pip) { state.pip.close(); return; }
-  const pip = await documentPictureInPicture.requestWindow({ width: 420, height: 720 });
+// 案内パネルを最前面の小窓へ移す。開いた小窓を返す
+async function openPip() {
+  const pip = await documentPictureInPicture.requestWindow({ width: 380, height: 600 });
   pip.document.title = "スライド先生";
   document.querySelectorAll("style, link[rel=stylesheet]").forEach((n) => pip.document.head.append(n.cloneNode(true)));
   syncTheme(pip.document);
@@ -1338,15 +1473,20 @@ async function togglePip() {
   el.tutorHomeNote.hidden = false;
   el.pipBtn.textContent = "📌 ミニ窓を閉じる";
   state.pip = pip;
+  // タイマーをミニ窓側へ移す
   if (state.stream && !state.paused) schedule();
+  if (state.countdown) startCountdown();
 
   pip.addEventListener("pagehide", () => {
     el.tutorHome.append(el.tutor);
     el.tutorHomeNote.hidden = true;
     el.pipBtn.textContent = "📌 ミニ窓で表示";
     state.pip = null;
+    // ミニ窓と一緒に消えたタイマーを、元のページで動かし直す
     if (state.stream && !state.paused) schedule();
+    if (state.countdown) startCountdown();
   });
+  return pip;
 }
 
 // ミニ窓なしでこのタブが裏に回ると、タイマーが間引かれて見守りが遅れる
