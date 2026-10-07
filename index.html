@@ -507,6 +507,10 @@
   }
   .dialog .dialog-actions { display: flex; gap: 8px; margin-top: 12px; }
   .dialog a { color: var(--ai); }
+  .dialog .setup-steps { margin: 0 0 8px; padding-left: 22px; display: grid; gap: 6px; font-size: 13px; }
+  .dialog code { font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--panel-alt); }
+  .dialog select { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel-alt); color: var(--ink); }
 
   [hidden] { display: none !important; }
 </style>
@@ -562,10 +566,22 @@
             <button class="primary-cta" id="startCaptureBtn">▶ はじめる</button>
             <button class="secondary-cta" id="practiceBtn">🧪 練習用画面を開く</button>
           </div>
+          <p style="font-size: 13px;"><strong>Google Colab などの Web アプリなら</strong>、画面共有の代わりに拡張機能でつなぐと、
+            ボタンの名前と位置を正確に読み、ページの上に直接光らせて案内できます。</p>
+          <div class="cta-row">
+            <button class="secondary-cta" id="webBtn">🌐 Web アプリにつなぐ</button>
+          </div>
           <p style="font-size: 12px;">画像と文字認識はこのブラウザ内だけで処理します（AI を Gemini にした場合だけ、画面の画像を Google に送ります。
             画面全体を共有すると、ほかのアプリや通知も写るので注意してください）。<br>
             ミニ窓とこのページは、画面全体を共有しても塗りつぶしてから読むので、案内の文字を AI が読み違えることはありません。<br>
             （文字認識の部品と日本語データ 約2MB を初回だけ jsDelivr から読み込みます）</p>
+        </div>
+        <div class="empty" id="webState" hidden>
+          <div style="font-size: 44px;">🌐</div>
+          <h2 id="webStateTitle"></h2>
+          <p>この Web アプリのタブとつないでいます。ハイライトはページの上に直接出ます。<br>
+            ミニ窓の「🧭」欄にやりたいことを書いて「開始」を押してください。</p>
+          <div class="cta-row"><button class="secondary-cta" id="webStateDisconnect">切断する</button></div>
         </div>
         <video id="captureVideo" autoplay muted playsinline hidden></video>
         <div class="target-box" id="targetBox" hidden></div>
@@ -673,6 +689,35 @@
   </div>
 </div>
 
+<dialog class="dialog" id="webDialog">
+  <h2>🌐 Web アプリにつなぐ</h2>
+  <p class="note">Google Colab などの Web アプリは、Chrome 拡張機能「スライド先生 Web 連携」でつなぐと、
+    ボタン（アイコンだけのボタンも）の名前と位置を正確に読み、ページの上に直接光らせて案内できます。画面共有はいりません。</p>
+  <div id="webMissing">
+    <p class="note"><strong>拡張機能が見つかりません。</strong>次の手順で入れてください（最初の1回だけ）。</p>
+    <ol class="setup-steps">
+      <li>Chrome のアドレスバーに <code>chrome://extensions</code> と入力して開く</li>
+      <li>右上の「デベロッパー モード」を ON にする</li>
+      <li>「パッケージ化されていない拡張機能を読み込む」を押し、このアプリのフォルダの中の <code>extension</code> フォルダを選ぶ</li>
+      <li>「スライド先生 Web 連携」の「詳細」を開き、「ファイルの URL へのアクセスを許可する」を ON にする
+        （ダブルクリックで開いたこのページとつなぐために必要）</li>
+      <li>このページを再読み込みする</li>
+    </ol>
+  </div>
+  <div class="fields" id="webReady" hidden>
+    <label>つなぐタブ <select id="webTabs"></select></label>
+    <small>見つからないときは、Colab などを別のタブで開いてから「更新」を押してください。練習には <code>practice-colab.html</code> も使えます。</small>
+  </div>
+  <p class="note" id="webResult"></p>
+  <div class="dialog-actions">
+    <button class="btn" id="webRefresh">更新</button>
+    <span class="actions-spacer"></span>
+    <button class="btn" id="webDisconnect" hidden>切断</button>
+    <button class="btn" id="webClose">閉じる</button>
+    <button class="btn primary" id="webConnect" hidden>つなぐ</button>
+  </div>
+</dialog>
+
 <dialog class="dialog" id="aiDialog">
   <h2>🤖 AI の設定</h2>
   <p class="note">AI は「🤖 AIに聞く」「できた？にひとこと添える」「✨ 手順を作る」に使います。どちらも無料で使えます。</p>
@@ -721,6 +766,7 @@
 <script src="js/ocr.js"></script>
 <script src="js/highlight.js"></script>
 <script src="js/coach.js"></script>
+<script src="js/connector.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 </body>

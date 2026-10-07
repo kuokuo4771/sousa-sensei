@@ -23,16 +23,17 @@ function updateTarget(read) {
 // ハイライトの表示・非表示と、見つからないときのお知らせ
 function renderTarget() {
   const t = state.target;
-  const show = !!t && !!state.stream && state.step < lesson().steps.length;
+  const show = !!t && watching() && state.step < lesson().steps.length;
   el.guide.hidden = !show;
   el.targetBox.hidden = el.targetTag.hidden = !show;
   if (show) el.guideSay.textContent = t.say;
-  const missing = !show && !!state.targetMissing && !!state.stream;
+  const missing = !show && !!state.targetMissing && watching();
   el.guideMissing.hidden = !missing;
   if (missing) {
     el.guideMissing.textContent =
       `画面の中に「${state.targetMissing}」が見つかりませんでした。ウインドウを大きくするか、対象が見える状態にしてください。`;
   }
+  syncWebHighlight();   // Web アプリにつないでいれば、ページの上のハイライトもそろえる
 }
 
 // 光らせる場所が変わったら、次のサンプルを待たずにすぐ描き直す

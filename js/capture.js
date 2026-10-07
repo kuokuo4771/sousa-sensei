@@ -54,6 +54,7 @@ function requestShare() {
 
 async function startCapture(stream) {
   try {
+    if (web.tabId) await disconnectWeb("画面共有に切り替えたため");   // Web アプリ連携とは同時に使わない
     state.stream = stream;
     const track = stream.getVideoTracks()[0];
     track.addEventListener("ended", stopCapture);
@@ -155,6 +156,10 @@ async function grabFrame() {
 }
 
 async function grabRawFrame() {
+  // Web アプリにつないでいるときは、最後に撮ったスクリーンショット（ミニ窓の拡大表示用）
+  if (!state.stream && web.lastShot) {
+    return { source: web.lastShot, width: web.lastShot.width, height: web.lastShot.height, close: () => {} };
+  }
   if (state.imageCapture) {
     try {
       const bitmap = await state.imageCapture.grabFrame();

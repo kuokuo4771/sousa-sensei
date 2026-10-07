@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>練習用ノートブック</title>
+<!--
+  スライド先生の Web 連携（Chrome 拡張機能）を試すための、Google Colab 風の練習ページ。ネットがなくても動く。
+  本物の Colab と同じく、一部のボタンはウェブ部品（Shadow DOM）の中にあり、アイコンだけのボタンには名前（aria-label）が付いている
+-->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 "Hiragino Sans", system-ui, sans-serif; color: #202124; background: #fff; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #e0e0e0; }
+  .logo { font-weight: 700; color: #f9ab00; }
+  .doc-title { font-size: 18px; }
+  .menus { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid #e0e0e0; position: relative; }
+  .menus > button { border: 0; background: none; padding: 6px 10px; font: inherit; cursor: pointer; border-radius: 4px; }
+  .menus > button:hover, .menus > button[aria-expanded="true"] { background: #f1f3f4; }
+  .dropdown { position: absolute; top: 100%; z-index: 10; background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 6px 0; min-width: 240px; }
+  .dropdown [role=menuitem] { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 8px 16px; font: inherit; cursor: pointer; }
+  .dropdown [role=menuitem]:hover { background: #f1f3f4; }
+  .toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid #e0e0e0; }
+  .toolbar button { border: 1px solid transparent; background: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font: inherit; }
+  .toolbar button:hover { background: #f1f3f4; }
+  .toolbar .spacer { flex: 1; }
+  .status { font-size: 12px; color: #5f6368; }
+  main { max-width: 980px; margin: 16px auto; padding: 0 16px; display: grid; gap: 12px; }
+  .cell { display: grid; grid-template-columns: 40px 1fr; gap: 8px; border: 1px solid transparent; border-radius: 6px; padding: 6px; }
+  .cell:focus-within { border-color: #c6dafc; }
+  .cell textarea { width: 100%; min-height: 56px; resize: vertical; font: 13px/1.5 ui-monospace, Menlo, monospace;
+    background: #f7f7f7; border: 1px solid #e0e0e0; border-radius: 4px; padding: 8px; }
+  .output { grid-column: 2; font: 13px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; color: #202124; }
+  .output.error { color: #c5221f; }
+  .text-cell { grid-column: 1 / -1; padding: 4px 8px; }
+  .text-cell h2 { margin: 4px 0; font-size: 20px; }
+  dialog { border: 0; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,.25); padding: 20px; min-width: 360px; }
+  dialog h3 { margin: 0 0 12px; }
+  dialog select { font: inherit; padding: 4px; }
+  dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">CO</span>
+  <span class="doc-title">練習ノートブック.ipynb</span>
+</header>
+
+<nav class="menus" id="menus">
+  <button data-menu="file">ファイル</button>
+  <button data-menu="edit">編集</button>
+  <button data-menu="view">表示</button>
+  <button data-menu="insert">挿入</button>
+  <button data-menu="runtime">ランタイム</button>
+  <button data-menu="tools">ツール</button>
+  <button data-menu="help">ヘルプ</button>
+</nav>
+
+<div class="toolbar">
+  <button id="addCode">＋ コード</button>
+  <button id="addText">＋ テキスト</button>
+  <span class="spacer"></span>
+  <span class="status" id="status">未接続</span>
+  <button id="connect" aria-label="ランタイムに接続">🔌</button>
+  <button aria-label="設定">⚙️</button>
+</div>
+
+<main id="cells">
+  <div class="cell"><div class="text-cell"><h2>はじめての Python</h2>下のセルの ▶ を押すと、プログラムを実行できます。</div></div>
+</main>
+
+<dialog id="runtimeDialog">
+  <h3>ランタイムのタイプを変更</h3>
+  <label>ハードウェア アクセラレータ
+    <select id="accel"><option>CPU</option><option>T4 GPU</option><option>TPU</option></select>
+  </label>
+  <div class="row"><button id="cancelRuntime">キャンセル</button><button id="saveRuntime">保存</button></div>
+</dialog>
+
+<script>
+// ▶ 実行ボタンは本物の Colab と同じく、ウェブ部品（Shadow DOM）の中に置く
+customElements.define("run-button", class extends HTMLElement {
+  constructor() {
+    super();
+    const root = this.attachShadow({ mode: "open" });
+    root.innerHTML = `<style>button{width:32px;height:32px;border-radius:50%;border:0;background:#e8eaed;cursor:pointer}
+      button:hover{background:#d2e3fc}</style><button aria-label="セルを実行">▶</button>`;
+    root.querySelector("button").addEventListener("click", () => this.dispatchEvent(new CustomEvent("run", { bubbles: true })));
+  }
+});
+
+const cells = document.getElementById("cells");
+let connected = false;
+let accel = "CPU";
+
+function addCodeCell(code = "") {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.innerHTML = `<run-button></run-button><textarea aria-label="コードセル" spellcheck="false" placeholder="ここにコードを入力"></textarea><div class="output"></div>`;
+  cell.querySelector("textarea").value = code;
+  cell.addEventListener("run", () => runCell(cell));
+  cells.append(cell);
+  cell.querySelector("textarea").focus();
+  return cell;
+}
+
+function addTextCell() {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.innerHTML = `<div class="text-cell" contenteditable="true" aria-label="テキストセル">ここに説明を書きます</div>`;
+  cells.append(cell);
+}
+
+// とても小さな Python もどき: print("...") と簡単な計算だけ動く
+function runCell(cell) {
+  const out = cell.querySelector(".output");
+  if (!connected) {
+    connected = true;
+    document.getElementById("status").textContent = `接続済み（${accel}）`;
+  }
+  const lines = cell.querySelector("textarea").value.split("\n").filter((l) => l.trim());
+  const result = [];
+  out.classList.remove("error");
+  for (const line of lines) {
+    const m = line.match(/^\s*print\((.*)\)\s*$/);
+    try {
+      if (m) result.push(String(Function(`"use strict";return (${m[1]})`)()));
+      else if (/^[\d\s+\-*/().]+$/.test(line)) result.push(String(Function(`"use strict";return (${line})`)()));
+      else throw new Error(`NameError: name '${line.trim().split(/\W/)[0]}' is not defined`);
+    } catch (e) {
+      result.push(e.message.startsWith("NameError") ? e.message : `SyntaxError: ${e.message}`);
+      out.classList.add("error");
+    }
+  }
+  out.textContent = result.join("\n");
+}
+
+// メニュー
+const MENUS = {
+  file: ["ノートブックを新規作成", "ノートブックを開く", "ドライブにコピーを保存", "ダウンロード"],
+  edit: ["元に戻す", "やり直し", "すべての出力を消去"],
+  view: ["目次", "ノートブックの情報"],
+  insert: ["コードセル", "テキストセル", "セクション ヘッダー セル"],
+  runtime: ["すべてのセルを実行", "ランタイムを再起動", "ランタイムのタイプを変更"],
+  tools: ["コマンド パレット", "設定"],
+  help: ["よくある質問", "フィードバックを送信"],
+};
+let openMenu = null;
+function closeMenu() {
+  openMenu?.remove();
+  openMenu = null;
+  document.querySelectorAll(".menus > button").forEach((b) => b.setAttribute("aria-expanded", "false"));
+}
+document.getElementById("menus").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-menu]");
+  if (!b) return;
+  e.stopPropagation();
+  const wasOpen = b.getAttribute("aria-expanded") === "true";
+  closeMenu();
+  if (wasOpen) return;
+  b.setAttribute("aria-expanded", "true");
+  const d = document.createElement("div");
+  d.className = "dropdown";
+  d.setAttribute("role", "menu");
+  d.style.left = `${b.offsetLeft}px`;
+  for (const name of MENUS[b.dataset.menu]) {
+    const item = document.createElement("button");
+    item.setAttribute("role", "menuitem");
+    item.textContent = name;
+    item.addEventListener("click", () => { closeMenu(); menuAction(name); });
+    d.append(item);
+  }
+  document.getElementById("menus").append(d);
+  openMenu = d;
+});
+document.addEventListener("click", closeMenu);
+
+function menuAction(name) {
+  if (name === "コードセル") addCodeCell();
+  if (name === "テキストセル") addTextCell();
+  if (name === "すべてのセルを実行") cells.querySelectorAll(".cell").forEach((c) => c.querySelector("textarea") && runCell(c));
+  if (name === "すべての出力を消去") cells.querySelectorAll(".output").forEach((o) => { o.textContent = ""; });
+  if (name === "ランタイムのタイプを変更") document.getElementById("runtimeDialog").showModal();
+}
+
+document.getElementById("addCode").addEventListener("click", () => addCodeCell());
+document.getElementById("addText").addEventListener("click", addTextCell);
+document.getElementById("connect").addEventListener("click", () => {
+  connected = true;
+  document.getElementById("status").textContent = `接続済み（${accel}）`;
+});
+document.getElementById("cancelRuntime").addEventListener("click", () => document.getElementById("runtimeDialog").close());
+document.getElementById("saveRuntime").addEventListener("click", () => {
+  accel = document.getElementById("accel").value;
+  if (connected) document.getElementById("status").textContent = `接続済み（${accel}）`;
+  document.getElementById("runtimeDialog").close();
+});
+
+addCodeCell('print("こんにちは")');
+</script>
+</body>
+</html>

@@ -53,6 +53,8 @@ const el = Object.fromEntries([
   "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
   "aiDialog", "builtinRadio", "builtinState", "builtinPrepare", "geminiFields", "geminiKey", "geminiModel",
   "aiTestResult", "aiTest", "aiClose", "aiSave", "goalForm", "goalInline", "settingsBtn", "settingsPop",
+  "webBtn", "webDialog", "webMissing", "webReady", "webTabs", "webResult", "webRefresh", "webClose", "webDisconnect",
+  "webConnect", "webState", "webStateTitle", "webStateDisconnect",
 ].map((id) => [id, document.getElementById(id)]));
 
 // ─── 設定（このブラウザに保存） ───────────────────────
@@ -84,7 +86,7 @@ renderPrefs();
 
 // 案内を読み上げる（共有中だけ）。PowerPoint を操作しながら、画面を見に行かなくても次の手順が分かるように
 function speak(text) {
-  if (!prefs.voice || !state.stream || !("speechSynthesis" in window)) return;
+  if (!prefs.voice || !watching() || !("speechSynthesis" in window)) return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "ja-JP";
@@ -96,6 +98,9 @@ function speak(text) {
 
 // タイマーはミニ窓が開いている間はそちらで動かす（裏のタブはタイマーが間引かれるため）
 function timerHost() { return state.pip && !state.pip.closed ? state.pip : window; }
+
+// いま案内中か（画面を共有している、または Web アプリのタブにつないでいる）。web は connector.js で作る
+function watching() { return !!state.stream || !!web.tabId; }
 
 const gridCanvas = document.createElement("canvas");
 gridCanvas.width = GRID_W; gridCanvas.height = GRID_H;

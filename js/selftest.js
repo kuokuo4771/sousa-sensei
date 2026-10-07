@@ -160,6 +160,7 @@ const SelfTest = (() => {
   // 1つ前のテストの影響を消す
   async function reset() {
     if (state.stream) stopCapture();
+    if (web.tabId) await disconnectWeb();
     await ocr.queue;
     AI.save({ provider: "off" });
     AI.resetForTest();
@@ -368,6 +369,59 @@ const SelfTest = (() => {
       const inside = px((250 - ox) * 2, (300 - oy) * 2);
       if (inside !== "255,255,255") return `ミニ窓の場所が塗られていない（${inside}）`;
       if (px(src.width - 2, src.height - 2) !== "18,52,86") return "ミニ窓以外まで塗られている";
+    }],
+    ["Web アプリ連携: 部品を読み、AI が選んだ部品をページの上に光らせ、操作の知らせで次へ進む", async () => {
+      // 拡張機能の偽物: ページからの頼みごとに、拡張機能と同じ形で返事をする
+      const sent = [];
+      const shot = document.createElement("canvas");
+      shot.width = 800;
+      shot.height = 500;
+      const pageItems = [
+        { id: 1, text: "ファイル", role: "button", x0: 0.01, y0: 0.05, x1: 0.05, y1: 0.08 },
+        { id: 2, text: "ランタイムに接続", role: "button", x0: 0.9, y0: 0.1, x1: 0.93, y1: 0.14 },
+        { id: 3, text: "セルを実行", role: "button", x0: 0.03, y0: 0.3, x1: 0.06, y1: 0.35 },
+      ];
+      const fakeExt = (e) => {
+        if (e.source !== window || e.data?.source !== "sensei-hub") return;
+        const { id, type } = e.data;
+        sent.push(e.data);
+        if (type === "ping") { window.postMessage({ source: "sensei-ext", type: "hello", version: "test" }, "*"); return; }
+        const res = { connect: { ok: true, title: "練習ノートブック", url: "file:///practice-colab.html" },
+          items: { items: pageItems, title: "練習ノートブック", url: "file:///practice-colab.html", focused: "" },
+          shot: { dataUrl: shot.toDataURL("image/jpeg") } }[type] ?? { ok: true };
+        window.postMessage({ source: "sensei-ext", type: "reply", id, res }, "*");
+      };
+      window.addEventListener("message", fakeExt);
+      try {
+        window.postMessage({ source: "sensei-hub", type: "ping" }, "*");
+        await wait(50);
+        if (!web.ext) return "拡張機能が見つかったことにならない";
+        AI.save({ provider: "builtin" });
+        fake.ai = (text) => {
+          const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+          if (cur.startsWith("（なし")) return { current_done: "none", status: "next", say: "▶ を押してセルを実行してください", target_id: idOf(text, "セルを実行"), target_text: "セルを実行", reason: "" };
+          return { current_done: "yes", status: "done", say: "実行できました", target_id: 0, target_text: "", reason: "" };
+        };
+        await connectWeb(42);
+        if (el.webState.hidden) return "つないだことが画面に出ていない";
+        startCoach("セルを実行したい");
+        await settle();
+        await wait(50);
+        const hl = sent.filter((m) => m.type === "highlight").pop();
+        if (!hl || hl.id !== 3) return `ページの上に光らせる指示が違う: ${JSON.stringify(hl)}`;
+        AI.resetForTest();
+        window.postMessage({ source: "sensei-ext", type: "event", event: "changed" }, "*");
+        await wait(50);
+        await settle();
+        if (!lesson().finished) return "操作の知らせで完了まで進まない";
+        if (fake.aiCalls[1]?.images !== 2) return "2回目の問い合わせで前後2枚を渡していない";
+        await wait(50);
+        if (sent[sent.length - 1]?.type !== "clear") return "完了したのにページの上のハイライトを消していない";
+      } finally {
+        await disconnectWeb();
+        window.removeEventListener("message", fakeExt);
+        web.ext = false;
+      }
     }],
     ["しばらく画面が変わらないと、助け舟と「できた？」を出す", async () => {
       await share();

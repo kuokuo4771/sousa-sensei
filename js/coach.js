@@ -105,19 +105,27 @@ function textChanges(beforeTexts, items) {
 // 今の画面を AI に見せて次の一手を聞く。
 // ctx: { goal, done, current }。before: { image, texts }（指示を出したときの画面。比べないなら null）
 async function askCoach(ctx, before = null) {
-  const read = ocr.on ? await readScreen() : null;
-  const items = read ? buildItems(read) : [];
-  const frame = await grabFrame();
-  if (!frame) throw new Error("画面を取得できませんでした");
-  let images;
-  try {
-    images = tagImage(frame, items);
-  } finally {
-    frame.close();
+  let items, images, app;
+  if (web.tabId) {
+    // Web アプリにつないでいるときは、文字認識の代わりにページの部品（名前と位置）をそのまま番号札にする
+    const obs = await webObserve();
+    items = obs.items;
+    images = tagImage({ source: obs.shot, width: obs.shot.width, height: obs.shot.height }, items);
+    app = obs.app;
+  } else {
+    const read = ocr.on ? await readScreen() : null;
+    items = read ? buildItems(read) : [];
+    const frame = await grabFrame();
+    if (!frame) throw new Error("画面を取得できませんでした");
+    try {
+      images = tagImage(frame, items);
+    } finally {
+      frame.close();
+    }
+    app = state.surface === "monitor"
+      ? "画面全体を共有中（どのアプリかは画面から判断する。白い四角は案内用の窓を隠したもので、操作の対象ではない）"
+      : state.stream?.getVideoTracks?.()[0]?.label ?? "";
   }
-  const app = state.surface === "monitor"
-    ? "画面全体を共有中（どのアプリかは画面から判断する。白い四角は案内用の窓を隠したもので、操作の対象ではない）"
-    : state.stream?.getVideoTracks?.()[0]?.label ?? "";
   const { appeared, disappeared } = textChanges(before?.texts, items);
   const r = await AI.coach({
     image: images.tagged, before: before?.image ?? null, appeared, disappeared, app, items, ...ctx,
@@ -197,7 +205,9 @@ function unionBox(boxes) {
 // clear: 光らせる場所がないとき、前のハイライトを消す（新しい指示に切り替わったとき）
 function targetFromAI(r, items, clear = false) {
   const it = resolveTarget(r, items);
-  if (it) state.target = { box: boxForText(it, r.targetText, items), name: r.targetText || it.text, say: r.say };
+  // Web アプリの部品は名前と位置が正確なので、部品まるごとを光らせる（webId でページの上にも直接出す）
+  if (it?.webId) state.target = { box: it, name: it.text, say: r.say, webId: it.webId };
+  else if (it) state.target = { box: boxForText(it, r.targetText, items), name: r.targetText || it.text, say: r.say };
   else if (r.box) state.target = { box: r.box, name: "ここ（AI の推定）", say: r.say };
   else if (clear) state.target = null;
   else return;
@@ -224,7 +234,7 @@ el.askBtn.addEventListener("click", async () => {
     else openAiDialog();
     return;
   }
-  if (!state.stream) { showAi("先に「▶ はじめる」で画面を共有してください。", "error"); return; }
+  if (!watching()) { showAi("先に「▶ はじめる」で画面を共有するか、「🌐 Web アプリにつなぐ」でつないでください。", "error"); return; }
   if (lesson().coach) { runCoach(true); return; }   // おまかせ中は、もう一度画面を見てもらう
   const token = state.stepToken;
   showAi("画面を見ています…", "busy");
@@ -284,14 +294,14 @@ function startCoach(goal) {
   el.aiBox.hidden = true;
   addLog(`🧭 おまかせ開始: ${goal}`);
   render();
-  if (state.stream) runCoach();
+  if (watching()) runCoach();
   else setWatch("「▶ はじめる」で画面を共有すると、AI が案内を始めます。");
 }
 
 // force: 「AIに聞く」から呼ばれたとき（考え中の表示を出す）
 async function runCoach(force = false) {
   const L = lesson();
-  if (!L.coach || L.finished || !state.stream || !AI.enabled()) return;
+  if (!L.coach || L.finished || !watching() || !AI.enabled()) return;
   if (coach.busy) { coach.again = true; return; }
   coach.busy = true;
   setStatus("AI 考え中");
@@ -314,7 +324,7 @@ async function runCoach(force = false) {
     }
   } finally {
     coach.busy = false;
-    setStatus(state.stream ? "見守り中" : "共有待ち");
+    setStatus(watching() ? "見守り中" : "共有待ち");
     if (coach.again) {
       coach.again = false;
       runCoach();

@@ -69,7 +69,7 @@ function goTo(step, knownRead = null, cheer = false) {
   } else {
     speak(`${cheer ? "できました。" : ""}ステップ${state.step + 1}。${next.text}`);
   }
-  if (state.stream && !state.paused) setWatch("見守り中 — 操作してみてください");
+  if (watching() && !state.paused) setWatch("見守り中 — 操作してみてください");
   readStepStart(knownRead);
 }
 
