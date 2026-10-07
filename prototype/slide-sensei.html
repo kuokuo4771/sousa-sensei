@@ -508,7 +508,7 @@
       <label for="lessonSelect">レッスン</label>
       <select id="lessonSelect"></select>
     </div>
-    <button class="icon-btn" id="makeBtn" title="やりたいことを書くと、AI が手順（レッスン）を作ります">✨ 手順を作る</button>
+    <button class="icon-btn" id="makeBtn" title="やりたいことを書くと、AI が画面を見ながら1手ずつ案内します（どのソフトでも）">🧭 AIにおまかせ</button>
     <button class="icon-btn" id="aiBtn" title="AI の設定（Chrome 内蔵AI または Gemini API 無料枠）">🤖 AI OFF</button>
     <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、光らせる場所を探し、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
     <button class="icon-btn" id="autoBtn" title="ON にすると「できた？」のあと数秒待って自動で次へ進みます（PowerPoint から手を離さずに進めるため）">⏩ 自動で次へ OFF</button>
@@ -680,14 +680,14 @@
 </dialog>
 
 <dialog class="dialog" id="makeDialog">
-  <h2>✨ やりたいことから手順を作る</h2>
-  <p class="note">例:「スライドに表を入れたい」「文字を大きくしたい」「スライドショーを始めたい」</p>
+  <h2>🧭 AIにおまかせ</h2>
+  <p class="note">どのソフトでも使えます。共有したウインドウを AI が見て、次の一手を1つずつ、場所を光らせて案内します。<br>例:「スライドに表を入れたい」「Excel で表に罫線を引きたい」「Premiere で動画の不要な部分をカットしたい」</p>
   <input type="text" id="goalInput" placeholder="やりたいこと">
   <p class="note" id="makeResult"></p>
   <div class="dialog-actions">
     <span class="actions-spacer"></span>
     <button class="btn" id="makeClose">閉じる</button>
-    <button class="btn primary" id="makeGo">手順を作る</button>
+    <button class="btn primary" id="makeGo">はじめる</button>
   </div>
 </dialog>
 
@@ -712,12 +712,13 @@ const AI = (() => {
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
   };
 
-  const SYSTEM = `あなたは「スライド先生」です。Mac の PowerPoint（日本語版）を初めて使う人に、
-画面を見ながら次の一手を教えます。
+  const SYSTEM = `あなたは「スライド先生」の AI 先生です。パソコンのソフト（PowerPoint に限らず、Excel・Word・
+Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、画面を見ながら次の一手を1つずつ教えます。
 - 答えは必ず指定された JSON だけで返す
-- 説明はやさしい日本語で短く（1〜2文）
-- ボタンやタブの名前は、画面に表示されている表記のまま書く（例:「新しいスライド」「挿入」「図形の書式」）
-- 分からないときは推測で断言せず、そう書く`;
+- 説明はやさしい日本語で短く（1文）
+- 画面上の場所を指すときは、画像に付いた赤い番号札の番号で答える
+- ボタンやメニューの名前は画面の表記のまま書き、画面にない名前を推測で作らない
+- 分からないときは推測で断言しない`;
 
   // ─── 設定（このブラウザに保存） ───────────────────
   const settings = { provider: "off", geminiKey: "", geminiModel: DEFAULT_GEMINI_MODEL };
@@ -822,16 +823,6 @@ const AI = (() => {
   }
 
   // ─── 共通 ───────────────────────────────────
-  // 画面のフレームを AI に渡す大きさのキャンバスにする
-  function frameToCanvas(frame) {
-    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(frame.width, frame.height));
-    const c = document.createElement("canvas");
-    c.width = Math.round(frame.width * scale);
-    c.height = Math.round(frame.height * scale);
-    c.getContext("2d").drawImage(frame.source, 0, 0, c.width, c.height);
-    return c;
-  }
-
   async function ask(text, image, schema) {
     if (!enabled()) throw new Error("AI が OFF です。「🤖 AI」から設定してください");
     const limited = rateCheck();
@@ -853,17 +844,21 @@ const AI = (() => {
 
   const str = (v, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
-  // ─── 使い道1: 画面を見て次の一手を答える ─────────────
-  const NEXT_SCHEMA = {
+  // ─── 画面を見て次の一手を答える ─────────────────
+  // 場所は「番号札（文字認識で見つけた画面上の文字）から選ぶ」形で答えさせる。
+  // AI に座標や名前を作らせると外れやすいが、候補から選ぶだけなら小さいモデルでも当たりやすく、
+  // 位置は文字認識の正確な値をそのまま使える（Set-of-Mark）
+  const COACH_SCHEMA = {
     type: "object",
     properties: {
-      done: { type: "boolean" },
+      current_done: { type: "string", enum: ["yes", "no", "none"] },
+      status: { type: "string", enum: ["next", "done", "unsure"] },
       say: { type: "string" },
-      target: { type: "string" },
+      target_id: { type: "integer" },
       box: { type: "array", items: { type: "number" } },
       reason: { type: "string" },
     },
-    required: ["done", "say", "target", "reason"],
+    required: ["current_done", "status", "say", "target_id", "reason"],
   };
 
   // AI が答えた [ymin, xmin, ymax, xmax]（0〜1000）を、画面に対する割合の枠にする。おかしな値なら null
@@ -873,70 +868,55 @@ const AI = (() => {
     return x1 > x0 && y1 > y0 && x1 - x0 < 0.6 && y1 - y0 < 0.6 ? { x0, y0, x1, y1 } : null;
   }
 
-  // ctx: { lesson, steps, stepIndex, question? }。返り値: { done, say, target, reason }
-  async function nextAction(frame, ctx) {
-    const steps = ctx.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
-    const text = `レッスン:「${ctx.lesson}」
-手順:
-${steps}
-いま取り組んでいる手順: ${ctx.stepIndex + 1}. ${ctx.steps[ctx.stepIndex] ?? "（すべて完了）"}
-${ctx.question ? `利用者からの質問: ${ctx.question}\n` : ""}
-添付は利用者の PowerPoint の画面です。次を JSON で答えてください。
-- done: いまの手順がこの画面ですでに終わっていれば true
-- say: 次にやる一手（1〜2文）。終わっていれば「できています」と短く
-- target: その一手で押す・クリックする場所に書かれている文字を、画面の表記のまま（例: 新しいスライド）。
-  文字のない場所（図形そのもの、スライドの中など）や分からないときは空文字
-- box: その場所の範囲を [ymin, xmin, ymax, xmax]（画像の左上を0、右下を1000とした整数）で。分からなければ空の配列
-- reason: そう判断した理由を短く`;
-    const r = await ask(text, frameToCanvas(frame), NEXT_SCHEMA);
-    return { done: r.done === true, say: str(r.say), target: str(r.target, 30), box: toBox(r.box), reason: str(r.reason) };
+  // c: { image（番号札を描いた画面）, app（共有中のウインドウ名）, goal（やりたいこと）,
+  //      done（終わった手順の配列）, current（いま案内中の手順。なければ null）, items（番号札 [{ id, text, x0..y1 }]） }
+  // 返り値: { currentDone: true | false | null, status: "next" | "done" | "unsure", say, targetId（なければ null）, box, reason }
+  async function coach(c) {
+    const list = c.items.map((it) =>
+      `[${it.id}] ${it.text} (${Math.round(((it.x0 + it.x1) / 2) * 100)}%, ${Math.round(((it.y0 + it.y1) / 2) * 100)}%)`).join("\n");
+    const text = `アプリ（共有中のウインドウ名）: ${c.app || "不明"}
+やりたいこと: ${c.goal}
+これまでに終わった手順:
+${c.done.map((d, i) => `${i + 1}. ${d}`).join("\n") || "（なし）"}
+いま案内中の手順: ${c.current ?? "（なし。最初の一手を考えてください）"}
+
+画像は利用者の画面です。画面上の文字に赤い番号札を付けました。
+番号札の一覧（文字と、画面の左上を0%・右下を100%としたときの中心の位置）:
+${list || "（文字が見つかりませんでした）"}
+
+次を JSON で答えてください。
+- current_done: 「いま案内中の手順」がこの画面で済んでいれば "yes"、まだなら "no"、案内中の手順がなければ "none"
+- status: やりたいことが全部終わっていれば "done"、次の一手を示せるなら "next"、画面から判断できないなら "unsure"
+- say: 次にやる一手を1文で（例:「上の『挿入』タブをクリックしてください」）。
+  案内中の手順がまだなら、その手順のやり方を言い直す。done なら完了のひとこと
+- target_id: その一手で操作する場所の番号札の番号（一覧から1つ）。
+  番号札のない場所（アイコンだけのボタン、図形、スライドの中など）なら 0
+- box: target_id が 0 のとき、その場所の範囲 [ymin, xmin, ymax, xmax]（画像の左上を0、右下を1000）。分からなければ空の配列
+- reason: そう判断した理由を短く
+ルール: 一度に1つの操作だけ。メニュー名やボタン名を推測で作らない。`;
+    const r = await ask(text, c.image, COACH_SCHEMA);
+    const id = Number(r.target_id);
+    return {
+      currentDone: { yes: true, no: false }[r.current_done] ?? null,
+      status: ["next", "done", "unsure"].includes(r.status) ? r.status : "unsure",
+      say: str(r.say),
+      targetId: c.items.some((it) => it.id === id) ? id : null,
+      box: toBox(r.box),
+      reason: str(r.reason),
+    };
   }
 
-  // ─── 使い道2: やりたいことからレッスンを作る ─────────────
-  const LESSON_SCHEMA = {
-    type: "object",
-    properties: {
-      name: { type: "string" },
-      steps: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            text: { type: "string" },
-            hint: { type: "string" },
-            target: { type: "string" },
-            appears: { type: "string" },
-          },
-          required: ["text", "hint", "target", "appears"],
-        },
-      },
-    },
-    required: ["name", "steps"],
-  };
-
-  // 返り値: { name, steps: [{ text, hint, target, appears }] }（3〜8ステップに整える）
-  async function makeLesson(goal) {
-    const text = `利用者のやりたいこと:「${goal}」
-これを Mac の PowerPoint（日本語版）で行う手順を、初心者向けに3〜8ステップで作り、JSON で答えてください。
-- name: レッスン名（15文字以内）
-- steps[].text: その手順でやること（1文）
-- steps[].hint: 迷いそうな点の補足（1文）
-- steps[].target: その手順でクリックするボタンやタブの名前を画面の表記のまま（例: 挿入）。なければ空文字
-- steps[].appears: その手順ができたときに画面に新しく現れる文字があれば、その表記（例: 図形の書式）。なければ空文字
-1つの手順には操作を1つだけ入れてください。`;
-    const r = await ask(text, null, LESSON_SCHEMA);
-    const steps = (Array.isArray(r.steps) ? r.steps : [])
-      .map((s) => ({ text: str(s.text, 80), hint: str(s.hint, 120), target: str(s.target, 30), appears: str(s.appears, 30) }))
-      .filter((s) => s.text)
-      .slice(0, 8);
-    if (steps.length < 2) throw new Error("手順をうまく作れませんでした。やりたいことを具体的に書いてみてください");
-    return { name: str(r.name, 20) || goal.slice(0, 20), steps };
+  // 接続テスト（画面の画像は送らない）
+  async function ping() {
+    const r = await ask('動作確認です。{"ok": true} を返してください。', null,
+      { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] });
+    if (r.ok !== true) throw new Error("AI の答えが想定と違いました");
   }
 
   return {
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
-    nextAction, makeLesson,
+    coach, ping, IMAGE_MAX_SIDE,
     DEFAULT_GEMINI_MODEL, normalizeModel,
   };
 })();
@@ -1042,6 +1022,7 @@ const GRID_W = 192, GRID_H = 108; // 変化検出用の縮小グリッド（文�
 const PIXEL_DIFF = 18;            // 1セルを「変化あり」とみなす輝度差 (0-255)
 const STABLE_MAX = 0.05;          // 確定画面との差の増減がこれ未満なら「操作が落ち着いた」(%)
 const CURSOR_CELLS = 14;          // これ以下のマス数の小さな変化の塊はカーソルとみなして無視
+const CURSOR_BLOBS_MAX = 3;       // 小さな塊がこれより多く同時に出たら、カーソルではなく本当の変化とみなす（カーソルの前後＋点滅する文字カーソルで3つまで）
 const BLOB_GAP = 3;               // この距離（マス）以内の変化は同じ塊とみなす（文字の画数がばらけても1つにまとまる）
 const THRESHOLD = 0.05;           // 確定画面との差がこれ以上なら「変化あり」(%)
 const BAND_MEDIUM = 3, BAND_LARGE = 20;
@@ -1142,34 +1123,39 @@ function lesson() { return LESSONS[state.lessonId]; }
 function currentStep() { return lesson().steps[state.step]; }
 
 function render() {
-  const { name, steps } = lesson();
-  const total = steps.length;
-  const done = Math.min(state.step, total);
-  const finished = state.step >= total;
+  const L = lesson();
+  const total = L.steps.length;
+  // おまかせ（L.coach）は手順が AI によって1つずつ増えるので、全体の数は分からない
+  const finished = L.coach ? !!L.finished : state.step >= total;
+  const done = L.coach ? coach.done.length : Math.min(state.step, total);
 
-  el.tutorLessonName.textContent = `レッスン: ${name}`;
-  el.progressCount.textContent = `${done} / ${total}`;
-  el.progressFill.style.width = `${(done / total) * 100}%`;
-  el.progressTitle.textContent = finished ? "完了" : `ステップ ${state.step + 1}`;
+  el.tutorLessonName.textContent = `${L.coach ? "おまかせ" : "レッスン"}: ${L.name}`;
+  el.progressCount.textContent = L.coach ? `${done} 完了` : `${done} / ${total}`;
+  el.progressFill.style.width = `${(finished ? 1 : L.coach ? done / (done + 1) : done / total) * 100}%`;
+  el.progressTitle.textContent = finished ? "完了" : L.coach ? `${state.step + 1} 手目` : `ステップ ${state.step + 1}`;
 
   el.stepCard.hidden = finished;
   el.doneCard.hidden = !finished;
   if (!finished) {
     const step = currentStep();
-    el.stepNum.textContent = `STEP ${state.step + 1} / ${total}`;
-    el.stepText.textContent = step.text;
-    el.stepHint.textContent = step.hint;
-    el.expectChip.textContent = EXPECT_LABEL[step.expect];
-    const useOcr = ocr.on && !!step.check;
+    el.stepNum.textContent = L.coach ? `STEP ${state.step + 1}` : `STEP ${state.step + 1} / ${total}`;
+    el.stepText.textContent = step?.text ?? "🧭 AI が画面を見て、最初の一手を考えています…";
+    el.stepHint.textContent = step?.hint ?? "";
+    el.expectChip.textContent = L.coach ? "🧭 画面が変わるたびに AI ができたかを確かめます" : EXPECT_LABEL[step.expect];
+    const useOcr = ocr.on && !!step?.check;
     el.checkChip.hidden = !useOcr;
     if (useOcr) el.checkChip.textContent = `🔤 自動確認: ${step.when}`;
   }
-  el.backBtn.disabled = state.step === 0;
+  el.backBtn.disabled = state.step === 0 || !!L.coach;
   el.nextBtn.textContent = finished ? "次のレッスン →" : "次へ →";
   renderTarget();
 }
 
+// 「次のレッスン」で巡回する決まったレッスン（おまかせは含めない）
+function fixedLessonIds() { return Object.keys(LESSONS).filter((id) => !LESSONS[id].coach); }
+
 function loadLesson(id) {
+  if (LESSONS[id]?.coach) { startCoach(coach.goal); return; }
   state.lessonId = id;
   el.lessonSelect.value = id;
   addLog(`レッスン開始: ${lesson().name}`);
@@ -1204,13 +1190,18 @@ function goTo(step, knownRead = null, cheer = false) {
 function completeStep(how, read = null) {
   addLog(`✓ ステップ ${state.step + 1} 完了${how ? `（${how}）` : ""}`);
   goTo(state.step + 1, read, true);
-  el.stepCard.classList.remove("flash");
-  void el.stepCard.offsetWidth;   // アニメーションをやり直すため
-  el.stepCard.classList.add("flash");
+  flashCard();
   if (state.step < lesson().steps.length) {
     setWatch("できました！ 次のステップへ進みました。");
     state.noticeUntil = Date.now() + 5000;
   }
+}
+
+// 手順カードを緑に光らせる（できたときの演出）
+function flashCard() {
+  el.stepCard.classList.remove("flash");
+  void el.stepCard.offsetWidth;   // アニメーションをやり直すため
+  el.stepCard.classList.add("flash");
 }
 
 // 文字で確認できたので、確認なしで次へ進む
@@ -1243,14 +1234,24 @@ function startCountdown() {
   void el.countdownBar.offsetWidth;   // アニメーションをやり直すため
   el.countdownBar.style.animation = `countdown ${AUTO_NEXT_SEC}s linear forwards`;
   const host = timerHost();
-  state.countdown = { host, id: host.setTimeout(() => { state.countdown = null; completeStep("自動"); }, AUTO_NEXT_SEC * 1000) };
+  state.countdown = {
+    host,
+    id: host.setTimeout(() => {
+      state.countdown = null;
+      if (lesson().coach) coachManualDone();
+      else completeStep("自動");
+    }, AUTO_NEXT_SEC * 1000),
+  };
 }
 function stopCountdown() {
   if (state.countdown) state.countdown.host.clearTimeout(state.countdown.id);
   state.countdown = null;
 }
 
-el.yesBtn.addEventListener("click", () => completeStep(""));
+el.yesBtn.addEventListener("click", () => {
+  if (lesson().coach) coachManualDone();
+  else completeStep("");
+});
 el.notYetBtn.addEventListener("click", () => {
   hideConfirm();
   addLog("まだ — 引き続き見守ります");
@@ -1261,8 +1262,13 @@ el.lessonSelect.addEventListener("change", (e) => loadLesson(e.target.value));
 el.backBtn.addEventListener("click", () => goTo(state.step - 1));
 el.restartBtn.addEventListener("click", () => loadLesson(state.lessonId));
 el.nextBtn.addEventListener("click", () => {
-  if (state.step >= lesson().steps.length) {
-    const ids = Object.keys(LESSONS);
+  const L = lesson();
+  if (L.coach && !L.finished) {
+    coachManualDone();
+    return;
+  }
+  if (L.coach || state.step >= L.steps.length) {
+    const ids = fixedLessonIds();
     loadLesson(ids[(ids.indexOf(state.lessonId) + 1) % ids.length]);
     return;
   }
@@ -1364,7 +1370,12 @@ async function startCapture(stream) {
     warnedHidden = false;
     const step = currentStep();
     if (step) speak(`ステップ${state.step + 1}。${step.text}`);
-    if (ocr.on) ensureOcr().then(() => readStepStart());
+    if (lesson().coach) {
+      // おまかせ中なら、文字認識の準備ができてから AI に最初の一手を聞く
+      (ocr.on ? ensureOcr() : Promise.resolve()).then(() => runCoach());
+    } else if (ocr.on) {
+      ensureOcr().then(() => readStepStart());
+    }
     schedule(500);
   } catch (e) {
     setWatch(`${e.name}: ${e.message}`, "small");
@@ -1438,12 +1449,15 @@ function toGray(frame) {
 }
 
 // 変化したセルの割合 (%)。近くの変化セルを塊にまとめ、
-// CURSOR_CELLS 以下の小さな塊（カーソル・キャレットなど）は数えない
+// CURSOR_CELLS 以下の小さな塊（カーソル・キャレットなど）は数えない。
+// ただしカーソルが作る小さな塊は多くても3つ（動く前と後・点滅する文字カーソル）なので、小さな塊が CURSOR_BLOBS_MAX を超えて
+// 同時に出たら、リボンのタブ切替やメニューの文字が入れ替わった「本当の変化」として数える
 function diffRatio(a, b) {
   const n = a.length;
   const mask = new Uint8Array(n);   // 0: 変化なし, 1: 変化あり(未処理), 2: 処理済み
   for (let i = 0; i < n; i++) if (Math.abs(a[i] - b[i]) > PIXEL_DIFF) mask[i] = 1;
   let kept = 0;
+  let small = 0, smallBlobs = 0;
   for (let i = 0; i < n; i++) {
     if (mask[i] !== 1) continue;
     const blob = [i];
@@ -1460,7 +1474,9 @@ function diffRatio(a, b) {
       }
     }
     if (blob.length > CURSOR_CELLS) kept += blob.length;
+    else { small += blob.length; smallBlobs++; }
   }
+  if (smallBlobs > CURSOR_BLOBS_MAX) kept += small;
   return (kept / n) * 100;
 }
 
@@ -1507,6 +1523,8 @@ async function onChange(net, band) {
   state.changes++;
   el.statChanges.textContent = `変化 ${state.changes} 回`;
   addLog(`変化 ${BAND_NAME[band]} ${net.toFixed(2)}%`);
+  // おまかせ中は、できたかどうかも次の一手も AI に画面を見て決めてもらう
+  if (lesson().coach) { runCoach(); return; }
   const step = currentStep();
   if (!step) return;
 
@@ -1550,6 +1568,10 @@ const TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tess
 const OCR_LANG_PATH = "https://cdn.jsdelivr.net/npm/@tesseract.js-data/jpn@1/4.0.0_best_int";
 const OCR_MAX_WIDTH = 1920;       // これより大きいフレームは縮小して読む（速度のため）
 const OCR_BINARY = 165;           // この明るさ未満を黒にして読む (0-255)
+const OCR_TILE = 48;              // 明暗を判定する区画の大きさ（ピクセル）
+const OCR_DARK_TILE = 150;        // 区画の平均の明るさがこれ未満なら「暗い背景」とみなす
+const OCR_DARK_INK = 50;          // 暗い区画では、平均よりこれだけ明るい部分を文字とみなす
+const OCR_DARK_WHITE_MAX = 0.2;   // 白っぽい点（200超）がこの割合以上ある区画は、平均が暗くても明るい背景とみなす
 // リボンにあるボタン名。これより下を「スライド側」とみなす（タブ切替で増えた文字を入力と数えないため）
 const RIBBON_WORDS = /ホーム|挿入|描画|デザイン|貼り付け|新しいスライド|レイアウト|図形|テキストボックス|配置|SmartArt|ワードアート|スライドのサイズ|背景の書式設定/;
 
@@ -1607,11 +1629,8 @@ function readScreen() {
     ctx.filter = "grayscale(1)";
     ctx.drawImage(frame.source, 0, 0, canvas.width, canvas.height);
     frame.close();
-    // 決まった明るさで白黒にする。薄い灰色のプレースホルダー（約136）は黒、点線枠（約170〜190）は白になる。
-    // 文字認識に任せると画面全体で境目を決めるため、黒い文字が増えると灰色の文字が白に飛んで読み落とす
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const px = img.data;
-    for (let i = 0; i < px.length; i += 4) px[i] = px[i + 1] = px[i + 2] = px[i] < OCR_BINARY ? 0 : 255;
+    binarize(img);
     ctx.putImageData(img, 0, 0);
     const started = performance.now();
     const { data } = await worker.recognize(canvas);
@@ -1622,7 +1641,7 @@ function readScreen() {
         x1: w.bbox.x1 / canvas.width, y1: w.bbox.y1 / canvas.height,
       }))
       .filter((w) => w.t);
-    const read = { words, text: words.map((w) => w.t).join("") };
+    const read = { words, text: words.map((w) => w.t).join(""), w: canvas.width, h: canvas.height };
     const ribbonBottom = Math.max(0, ...findAll(read, RIBBON_WORDS).filter((b) => b.y1 < 0.5).map((b) => b.y1));
     read.body = words.filter((w) => (w.y0 + w.y1) / 2 > ribbonBottom).map((w) => w.t).join("");
     el.ocrMeta.textContent = `（${((performance.now() - started) / 1000).toFixed(1)}秒・${read.text.length}文字）`;
@@ -1635,6 +1654,40 @@ function readScreen() {
   });
   ocr.queue = result;
   return result;
+}
+
+// 文字認識用に白黒にする（グレースケール済みの画像を書き換える）。
+// - 決まった明るさ（OCR_BINARY）で分ける。薄い灰色のプレースホルダー（約136）は黒、点線枠（約170〜190）は白になる。
+//   文字認識に任せると画面全体で境目を決めるため、黒い文字が増えると灰色の文字が白に飛んで読み落とす
+// - 暗い背景に明るい文字（Photoshop・Premiere などのダーク画面、色付きのタイトルバーやボタン）も読めるよう、
+//   OCR_TILE ピクセル四方の区画ごとに明るさの平均を見て、暗い区画では「平均より十分明るい部分」を文字（黒）にする。
+//   単純に反転すると、中くらいの暗さの背景（赤いタイトルバーなど）が黒く塗りつぶされ、近くの行まで読み落とす
+function binarize(img) {
+  const { width: w, height: h, data: px } = img;
+  for (let ty = 0; ty < h; ty += OCR_TILE) {
+    for (let tx = 0; tx < w; tx += OCR_TILE) {
+      const x1 = Math.min(tx + OCR_TILE, w), y1 = Math.min(ty + OCR_TILE, h);
+      let sum = 0, white = 0;
+      for (let y = ty; y < y1; y++) {
+        for (let x = tx; x < x1; x++) {
+          const v = px[(y * w + x) * 4];
+          sum += v;
+          if (v > 200) white++;
+        }
+      }
+      const n = (x1 - tx) * (y1 - ty);
+      const mean = sum / n;
+      // 太い黒字が詰まった区画も平均は暗くなるが、白い背景が混ざるので「暗い背景」とは区別できる
+      const dark = mean < OCR_DARK_TILE && white / n < OCR_DARK_WHITE_MAX;
+      for (let y = ty; y < y1; y++) {
+        for (let x = tx; x < x1; x++) {
+          const i = (y * w + x) * 4;
+          const ink = dark ? px[i] > mean + OCR_DARK_INK : px[i] < OCR_BINARY;
+          px[i] = px[i + 1] = px[i + 2] = ink ? 0 : 255;
+        }
+      }
+    }
+  }
 }
 
 // 読んだ文字の中から正規表現に一致する場所をすべて探し、その範囲（割合）を返す。
@@ -1665,10 +1718,6 @@ function stepBefore() { return [state.startRead, state.prevStartRead].filter(Boo
 // 文字の条件を満たしているか
 function checkPassed(check, before, now) {
   if (check.appears && !check.appears.test(now.text)) return false;
-  // appearsNew: ステップ開始時にはなかった文字が現れた（AI が作ったレッスン用。最初から見えている文字で即完了しないように）
-  if (check.appearsNew) {
-    if (!before.length || before.some((r) => check.appearsNew.test(r.text)) || !check.appearsNew.test(now.text)) return false;
-  }
   if (check.gone) {
     // 最初にあった文字が消えたことを確かめる（最初に読めていなければ判定しない）
     if (!before.some((r) => check.gone.test(r.text)) || check.gone.test(now.text)) return false;
@@ -1803,9 +1852,10 @@ function placePreviewBox() {
 }
 window.addEventListener("resize", placePreviewBox);
 
-// ─── AI（ai.js） ─────────────────────────────────────
-// AI には「次の一手」と「押す場所の文字」を答えてもらい、その文字の位置は文字認識で探して光らせる。
-// AI は画面上の正確な位置が苦手なので、位置は文字認識に任せる
+// ─── AI ─────────────────────────────────────────────
+// 文字認識で見つけた画面上の文字に番号札を付け、AI には「どの番号を操作するか」を選んでもらう。
+// AI は画面上の正確な位置や名前を作るのが苦手なので、位置は文字認識の値をそのまま使う
+const MAX_ITEMS = 80;   // AI に渡す番号札の数の上限（多すぎると小さいモデルが迷う）
 
 function renderAiButton() { el.aiBtn.textContent = `🤖 AI ${AI.label()}`; }
 renderAiButton();
@@ -1816,34 +1866,91 @@ function showAi(text, cls = "") {
   el.aiText.textContent = text;
 }
 
-function aiContext() {
-  return { lesson: lesson().name, steps: lesson().steps.map((s) => s.text), stepIndex: state.step };
-}
-
-// 文字をそのまま探す正規表現（AI の答えに含まれる記号は文字として扱う。空白は文字認識が取り除くので消す）
-function textRegex(text) {
-  return new RegExp(text.replace(/\s+/g, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-}
-
-// 画面から label の文字を探して光らせる。文字認識で見つからないとき（1文字のボタン名などは読み落としやすい）は、
-// AI が答えたおおよその範囲（aiBox）を使う
-async function highlightText(label, say, aiBox = null) {
-  if (!label && !aiBox) return;
-  const token = state.stepToken;
-  const read = ocr.on && label ? await readScreen() : null;
-  if (token !== state.stepToken) return;
-  const boxes = read ? findAll(read, textRegex(label)).sort((a, b) => a.y0 - b.y0) : [];
-  if (boxes.length) {
-    state.target = { box: boxes[0], name: label, say };
-    state.targetMissing = null;
-  } else if (aiBox) {
-    state.target = { box: aiBox, name: `${label || "ここ"}（AI の推定）`, say };
-    state.targetMissing = null;
-  } else {
-    state.targetMissing = label;
+// 文字認識の単語を、AI に選ばせる番号札にまとめる。
+// 同じ行で近い単語はつなげる（「新しい」「スラ」「イド」→「新しいスライド」）
+function buildItems(read) {
+  const items = [];
+  for (const w of read.words) {
+    const last = items[items.length - 1];
+    const hPx = (w.y1 - w.y0) * read.h;
+    const sameLine = last && Math.abs((last.y0 + last.y1) / 2 - (w.y0 + w.y1) / 2) * read.h < hPx * 0.6;
+    if (sameLine && w.x0 >= last.x0 && (w.x0 - last.x1) * read.w < hPx * 1.2) {
+      last.text += w.t;
+      last.x1 = Math.max(last.x1, w.x1);
+      last.y0 = Math.min(last.y0, w.y0);
+      last.y1 = Math.max(last.y1, w.y1);
+    } else {
+      items.push({ text: w.t, x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1 });
+    }
   }
+  // 枠線や罫線を「|」「一」と読んだだけのものは除く
+  return items
+    .filter((it) => /[\p{L}\p{N}]/u.test(it.text) && !/^[|｜_\-—ー一]+$/.test(it.text))
+    .slice(0, MAX_ITEMS)
+    .map((it, i) => ({ ...it, id: i + 1 }));
+}
+
+// AI に見せる画像: 画面を縮小し、番号札（赤い枠と番号）を描き込む
+function tagImage(frame, items) {
+  const scale = Math.min(1, AI.IMAGE_MAX_SIDE / Math.max(frame.width, frame.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(frame.width * scale);
+  c.height = Math.round(frame.height * scale);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(frame.source, 0, 0, c.width, c.height);
+  ctx.font = "bold 11px sans-serif";
+  ctx.textBaseline = "top";
+  for (const it of items) {
+    const x = it.x0 * c.width, y = it.y0 * c.height;
+    ctx.strokeStyle = "rgba(229, 51, 42, 0.8)";
+    ctx.strokeRect(x - 1, y - 1, (it.x1 - it.x0) * c.width + 2, (it.y1 - it.y0) * c.height + 2);
+    const label = String(it.id);
+    ctx.fillStyle = "#e5332a";
+    ctx.fillRect(x - 1, y - 13, ctx.measureText(label).width + 4, 12);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(label, x + 1, y - 12);
+  }
+  return c;
+}
+
+// 今の画面を AI に見せて次の一手を聞く。ctx: { goal, done, current }
+async function askCoach(ctx) {
+  const read = ocr.on ? await readScreen() : null;
+  const items = read ? buildItems(read) : [];
+  const frame = await grabFrame();
+  if (!frame) throw new Error("画面を取得できませんでした");
+  let image;
+  try {
+    image = tagImage(frame, items);
+  } finally {
+    frame.close();
+  }
+  const app = state.stream?.getVideoTracks?.()[0]?.label ?? "";
+  const r = await AI.coach({ image, app, items, ...ctx });
+  return { r, items };
+}
+
+// AI が選んだ番号札（なければ AI の推定範囲）を光らせる。
+// clear: 光らせる場所がないとき、前のハイライトを消す（新しい指示に切り替わったとき）
+function targetFromAI(r, items, clear = false) {
+  const it = items.find((i) => i.id === r.targetId);
+  if (it) state.target = { box: it, name: it.text, say: r.say };
+  else if (r.box) state.target = { box: r.box, name: "ここ（AI の推定）", say: r.say };
+  else if (clear) state.target = null;
+  else return;
+  state.targetMissing = null;
   renderTarget();
   refreshGuide();
+}
+
+// 決まったレッスンを AI に説明するときの文脈
+function lessonCoachContext() {
+  const L = lesson();
+  return {
+    goal: `${L.name}（手順: ${L.steps.map((s, i) => `${i + 1}. ${s.text}`).join(" / ")}）`,
+    done: L.steps.slice(0, state.step).map((s) => s.text),
+    current: currentStep()?.text ?? null,
+  };
 }
 
 // 「🤖 AIに聞く」: 今の画面を見せて、次にやることを聞く
@@ -1854,43 +1961,159 @@ el.askBtn.addEventListener("click", async () => {
     else openAiDialog();
     return;
   }
-  if (!state.stream) { showAi("先に「▶ はじめる」で PowerPoint の画面を共有してください。", "error"); return; }
-  const frame = await grabFrame();
-  if (!frame) return;
+  if (!state.stream) { showAi("先に「▶ はじめる」で画面を共有してください。", "error"); return; }
+  if (lesson().coach) { runCoach(true); return; }   // おまかせ中は、もう一度画面を見てもらう
   const token = state.stepToken;
   showAi("画面を見ています…", "busy");
   try {
-    const r = await AI.nextAction(frame, aiContext());
+    const { r, items } = await askCoach(lessonCoachContext());
     if (token !== state.stepToken) return;
     showAi(r.reason ? `${r.say}（${r.reason}）` : r.say);
     speak(r.say);
     addLog(`🤖 ${r.say}`);
-    if (r.target || r.box) highlightText(r.target, `光っている${r.target ? `「${r.target}」` : "場所"}: ${r.say}`, r.box);
+    targetFromAI(r, items);
   } catch (e) {
     showAi(`AI に聞けませんでした: ${e.message}`, "error");
-  } finally {
-    frame.close();
   }
 });
 
 // 「できた？」に AI のひとことを添える（失敗しても「できた？」だけで進められるので、黙って諦める）
 async function commentByAI(token) {
-  const frame = await grabFrame();
-  if (!frame) return;
   try {
-    const r = await AI.nextAction(frame, aiContext());
+    const { r, items } = await askCoach(lessonCoachContext());
     if (token !== state.stepToken || el.confirmBox.hidden) return;
-    if (r.done) {
+    if (r.currentDone) {
       showAi(`できているようです。${r.reason}`);
     } else {
       showAi(`まだのようです。${r.say}`);
-      if (r.target || r.box) highlightText(r.target, `光っている${r.target ? `「${r.target}」` : "場所"}: ${r.say}`, r.box);
+      targetFromAI(r, items);
     }
   } catch (e) {
     console.warn("AI のひとことを付けられませんでした:", e.message);
-  } finally {
-    frame.close();
   }
+}
+
+// ─── 🧭 AIにおまかせ（どのソフトでも） ─────────────────
+// 手順を前もって作らず、AI が画面を見て次の一手を1つずつ出す。
+// 画面が変わるたびに AI が「いまの手順ができたか」を確かめ、できていれば次の一手へ進む。
+// AI が判断できないときは「できた？」で人に聞く
+const coach = { goal: "", done: [], current: null, busy: false, again: false, retry: null };
+
+function startCoach(goal) {
+  coach.goal = goal;
+  coach.done = [];
+  coach.current = null;
+  LESSONS.coach = { name: `🧭 ${goal}`, coach: true, steps: [] };
+  let opt = [...el.lessonSelect.options].find((o) => o.value === "coach");
+  if (!opt) {
+    opt = new Option("", "coach");
+    el.lessonSelect.append(opt);
+  }
+  opt.text = LESSONS.coach.name;
+  state.lessonId = "coach";
+  el.lessonSelect.value = "coach";
+  state.step = 0;
+  state.stepToken++;
+  state.target = null;
+  state.targetMissing = null;
+  hideConfirm();
+  el.aiBox.hidden = true;
+  addLog(`🧭 おまかせ開始: ${goal}`);
+  render();
+  if (state.stream) runCoach();
+  else setWatch("「▶ はじめる」で画面を共有すると、AI が案内を始めます。");
+}
+
+// force: 「AIに聞く」から呼ばれたとき（考え中の表示を出す）
+async function runCoach(force = false) {
+  const L = lesson();
+  if (!L.coach || L.finished || !state.stream || !AI.enabled()) return;
+  if (coach.busy) { coach.again = true; return; }
+  coach.busy = true;
+  setStatus("AI 考え中");
+  if (!coach.current || force) setWatch("🧭 AI が画面を見て、次の一手を考えています…", "moving");
+  try {
+    const { r, items } = await askCoach({ goal: coach.goal, done: coach.done, current: coach.current });
+    if (lesson() === L) applyCoach(L, r, items);
+  } catch (e) {
+    if (/間をあけて|上限/.test(e.message)) {
+      // 呼び出し回数の制限に当たったら、少し待ってやり直す（やり直しの予約は1つだけ）
+      if (!coach.retry) {
+        coach.retry = timerHost().setTimeout(() => { coach.retry = null; runCoach(); }, 4500);
+      }
+    } else {
+      showAi(`AI に聞けませんでした: ${e.message}`, "error");
+    }
+  } finally {
+    coach.busy = false;
+    setStatus(state.stream ? "見守り中" : "共有待ち");
+    if (coach.again) {
+      coach.again = false;
+      runCoach();
+    }
+  }
+}
+
+function applyCoach(L, r, items) {
+  let cheer = false;
+  if (coach.current && r.currentDone === true) {
+    coach.done.push(coach.current);
+    addLog(`✓ ${coach.current}`);
+    coach.current = null;
+    cheer = true;
+    flashCard();
+  }
+  if (!coach.current && r.status === "done") {
+    L.finished = true;
+    state.step = L.steps.length;
+    state.target = null;
+    hideConfirm();
+    el.aiBox.hidden = true;
+    render();
+    addLog("🎉 やりたいことが完了しました");
+    speak("できました。やりたいことは完了です。お疲れさまでした。");
+    return;
+  }
+  if (!coach.current && r.status === "next" && r.say) {
+    L.steps.push({ text: r.say, hint: r.reason, expect: "any" });
+    state.step = L.steps.length - 1;
+    state.stepToken++;
+    coach.current = r.say;
+    hideConfirm();
+    el.aiBox.hidden = true;
+    render();
+    targetFromAI(r, items, true);
+    setWatch("見守り中 — 操作してみてください");
+    speak(`${cheer ? "できました。" : ""}${r.say}`);
+    return;
+  }
+  if (coach.current && r.currentDone === false && r.status !== "unsure") {
+    showAi(`まだのようです。${r.say}`);
+    targetFromAI(r, items);
+    setWatch("見守り中 — 操作してみてください");
+    return;
+  }
+  // AI が判断できないときは人に聞く
+  if (coach.current) {
+    el.confirmText.textContent = "AI では判断できませんでした。この手順はできましたか？";
+    el.confirmBox.hidden = false;
+    startCountdown();
+    speak("できましたか？");
+  } else {
+    showAi(r.say || "AI が次の一手を決められませんでした。「🤖 AIに聞く」でもう一度試してください。", "error");
+  }
+}
+
+// 「できた ✓」「次へ」を押したとき（AI の判定を待たずに次の一手へ）
+function coachManualDone() {
+  if (coach.current) {
+    coach.done.push(coach.current);
+    addLog(`✓ ${coach.current}（手動）`);
+    coach.current = null;
+    flashCard();
+  }
+  hideConfirm();
+  runCoach();
 }
 
 // ─── AI の設定画面 ────────────────────────────────
@@ -1954,14 +2177,14 @@ el.aiSave.addEventListener("click", () => {
   el.aiDialog.close();
 });
 
-// 接続テスト: 実際に短い手順を1つ作ってもらう（画面の画像は送らない）
+// 接続テスト（画面の画像は送らない）
 el.aiTest.addEventListener("click", async () => {
   const before = { ...AI.settings };
   AI.save(readAiForm());
   el.aiTestResult.textContent = "テスト中…";
   try {
-    const r = await AI.makeLesson("スライドにタイトルを入れたい");
-    el.aiTestResult.textContent = `✓ つながりました（「${r.name}」の手順を ${r.steps.length} 個作れました）`;
+    await AI.ping();
+    el.aiTestResult.textContent = "✓ つながりました";
   } catch (e) {
     el.aiTestResult.textContent = `✗ ${e.message}`;
   } finally {
@@ -1969,7 +2192,7 @@ el.aiTest.addEventListener("click", async () => {
   }
 });
 
-// ─── やりたいことから手順を作る ──────────────────────
+// ─── 🧭 AIにおまかせ の入力画面 ───────────────────────
 el.makeBtn.addEventListener("click", () => {
   if (!AI.enabled()) { openAiDialog(); return; }
   el.makeResult.textContent = "";
@@ -1979,44 +2202,12 @@ el.makeBtn.addEventListener("click", () => {
 el.makeClose.addEventListener("click", () => el.makeDialog.close());
 el.goalInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing) el.makeGo.click(); });
 
-el.makeGo.addEventListener("click", async () => {
+el.makeGo.addEventListener("click", () => {
   const goal = el.goalInput.value.trim();
   if (!goal) return;
-  el.makeGo.disabled = true;
-  el.makeResult.textContent = "手順を作っています…";
-  try {
-    const made = await AI.makeLesson(goal);
-    const id = `ai-${Date.now()}`;
-    LESSONS[id] = lessonFromAI(made);
-    el.lessonSelect.append(new Option(LESSONS[id].name, id));
-    el.makeDialog.close();
-    loadLesson(id);
-  } catch (e) {
-    el.makeResult.textContent = `作れませんでした: ${e.message}`;
-  } finally {
-    el.makeGo.disabled = false;
-  }
+  el.makeDialog.close();
+  startCoach(goal);
 });
-
-// AI が作った手順を、このアプリのレッスンの形に直す。
-// 手順の正しさは保証できないので、完了は「新しく現れた文字」か「できた？」で確かめる
-function lessonFromAI(made) {
-  return {
-    name: `🤖 ${made.name}`,
-    steps: made.steps.map((s) => ({
-      text: s.text,
-      hint: s.hint || "AI が作った手順です。画面と違うときは「🤖 AIに聞く」を押してください。",
-      expect: "any",
-      ...(s.appears && {
-        check: { appearsNew: textRegex(s.appears) },
-        when: `「${s.appears}」が新しく表示されたら次へ`,
-      }),
-      ...(s.target && {
-        targets: [{ re: textRegex(s.target), name: s.target, say: `光っている「${s.target}」をクリック` }],
-      }),
-    })),
-  };
-}
 
 // ─── Mini window (Document Picture-in-Picture) ───────
 const canPip = "documentPictureInPicture" in window;

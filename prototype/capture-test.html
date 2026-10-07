@@ -187,6 +187,7 @@ const PIXEL_DIFF = 18;                // 1セルを「変化あり」とみな�
 const MAX_LOG = 24;
 const STABLE_MAX = 0.05;              // 確定画面との差の増減がこれ未満なら「操作が落ち着いた」(%)
 const BLOB_GAP = 3;                   // この距離（マス）以内の変化は同じ塊とみなす（文字の画数がばらけても1つにまとまる）
+const CURSOR_BLOBS_MAX = 3;           // 小さな塊がこれより多く同時に出たら、カーソルではなく本当の変化とみなす（カーソルの前後＋点滅する文字カーソルで3つまで）
 const BAND_MEDIUM = 3;                // これ以上は「中」: 新しいスライド、メニュー (%)
 const BAND_LARGE = 20;                // これ以上は「大」: レイアウト変更、ダイアログ (%)
 
@@ -330,6 +331,7 @@ function diffStats(a, b, heat) {
   }
   const maxIgnored = sliderVal("cursorCells");
   let kept = 0;
+  const smallBlobs = [];
   for (let i = 0; i < n; i++) {
     if (mask[i] !== 1) continue;
     const blob = [i];
@@ -346,7 +348,13 @@ function diffStats(a, b, heat) {
       }
     }
     if (blob.length > maxIgnored) kept += blob.length;
-    else for (const k of blob) mask[k] = 3;
+    else smallBlobs.push(blob);
+  }
+  // カーソルが作る小さな塊は多くても3つ（動く前と後・点滅する文字カーソル）。それより多ければ、タブ切替などの本当の変化として数える
+  if (smallBlobs.length > CURSOR_BLOBS_MAX) {
+    for (const blob of smallBlobs) kept += blob.length;
+  } else {
+    for (const blob of smallBlobs) for (const k of blob) mask[k] = 3;
   }
   if (heat) {
     for (let i = 0; i < n; i++) {
