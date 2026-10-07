@@ -1,5 +1,9 @@
 # スライド先生 MVP プラン（2026-09-30）
 
+> 2026-10-07 にフォルダ構成を変えました（段階1）。この文書の中のファイル名は当時のままです。
+> `prototype/slide-sensei.html` → `index.html`＋`js/`、`prototype/practice-slide.html` → `practice.html`、
+> `prototype/capture-test.html` → `tools/capture-test.html`、旧試作・Photoshop 版の仕様 → `archive/`
+
 ## 0. 前提と制約
 
 - **Python はターミナルで使えない** → `main.py` / `start.command` は現環境では動かせない
@@ -275,3 +279,15 @@
 - [x] 上部のボタンを整理: AI・文字認識・自動で次へ・音声・テーマを「⚙ 設定」にまとめた
 - [x] 「🧭 やりたいこと」入力欄を案内パネルの中に移した（ミニ窓から直接おまかせを始められる）
 - [ ] 2台以上のディスプレイでの塗りつぶし位置（今は、このページがあるディスプレイと共有中の画面の縦横比が同じときだけ塗る）
+
+## 7. 段階1: 土台づくり ✅ 2026-10-07
+
+機能は変えずに、発展させるための土台を整えた。
+- [x] 約2,500行の1ファイルを `index.html`（HTML・CSS）＋ `js/` の11ファイルに分割（ふつうの `<script>`。ダブルクリックでも動く）
+- [x] フォルダ整理: 本体をリポジトリ直下へ（GitHub Pages でそのまま公開できる形）、練習用画面は `practice.html`、
+  計測ツールは `tools/`、旧試作（Python 版・Chrome 拡張・Photoshop 版の仕様と UI モック）は `archive/`
+- [x] 自動テスト `js/selftest.js`（`index.html?test`）: これまで手で確かめてきた 13 件（変化検知・文字認識・ハイライト・
+  AI の送信内容・レッスンの自動進行・おまかせ・画面全体の塗りつぶし・助け舟）。すべて成功
+- [x] `tools/bundle.sh`: すべてを1つの HTML にまとめる（1ファイルで配る・別ファイルを読めない環境で確認する）
+- [x] GitHub Pages 用に `.nojekyll`
+- [ ] GitHub へのアップロードと Pages の公開（アカウントと公開範囲の確認待ち）

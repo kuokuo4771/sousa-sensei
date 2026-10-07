@@ -9,7 +9,7 @@ PowerPoint の画面を見ながら、**次にやることを1つずつ、操作
 
 ## 使い方
 
-1. **Google Chrome** で [`prototype/slide-sensei.html`](prototype/slide-sensei.html) を開く
+1. **Google Chrome** で [`index.html`](index.html) を開く（ダブルクリックで OK。GitHub Pages で公開したら、その URL を開くだけ）
 2. PowerPoint（日本語版）で新しいプレゼンテーションを開いておく
    - PowerPoint がない場合は「🧪 練習用画面を開く」で、PowerPoint 風の練習用画面を使えます
 3. 「▶ はじめる」→ **画面全体**を選ぶ（おすすめ）。練習用画面だけを使うなら**タブ**でも可
@@ -67,11 +67,14 @@ PowerPoint の画面を見ながら、**次にやることを1つずつ、操作
 
 | ファイル | 内容 |
 |---|---|
-| `prototype/slide-sensei.html` | アプリ本体（1ファイル完結） |
-| `prototype/practice-slide.html` | PowerPoint がない環境用の練習用画面 |
-| `prototype/capture-test.html` | 画面収録・変化検知の計測ツール（閾値調整用） |
+| `index.html` | アプリ本体の画面（HTML と CSS） |
+| `js/` | アプリ本体の処理（下の「ファイル構成」） |
+| `practice.html` | PowerPoint がない環境用の練習用画面 |
+| `tools/capture-test.html` | 画面収録・変化検知の計測ツール（閾値調整用） |
+| `tools/bundle.sh` | すべてを1つの HTML にまとめる（1ファイルで配りたいとき） |
 | `docs/MVP_PLAN.md` | MVP の計画・計測結果・判断の記録 |
 | `docs/DEMO.md` | 発表デモの手順と台本 |
+| `archive/` | 旧試作（Python 版・Chrome 拡張・Photoshop 版の仕様） |
 
 ## レッスン
 
@@ -90,8 +93,49 @@ PowerPoint の画面を見ながら、**次にやることを1つずつ、操作
 - PowerPoint の**明るい**テーマ向けです。暗い背景のテーマでは、灰色のプレースホルダー文字を読めないことがあります
 - ブラウザからは PowerPoint の画面に直接描けないため、ハイライトはミニ窓とプレビューの中に表示します
 
-## 旧試作について
+## 開発
+
+### ファイル構成（js/）
+
+ふつうの `<script>` で順番に読み込みます（ダブルクリックで開いても動くように、ES モジュールは使っていません）。
+後のファイルは前のファイルで作ったものを使うので、`index.html` の読み込み順を変えないでください。
+
+| ファイル | 役割 |
+|---|---|
+| `ai.js` | AI 連携（Chrome 内蔵AI / Gemini API 無料枠、呼び出し回数の制限、答えの読み取り） |
+| `lessons.js` | 決まったレッスンの定義（手順・完了条件・光らせる場所） |
+| `core.js` | 設定値・状態（`state`）・画面の部品（`el`）・保存される設定・読み上げ |
+| `steps.js` | 手順の表示と進め方（次へ・戻る・できた？・記録） |
+| `capture.js` | 画面共有と、共有画面のフレーム取得（画面全体のときは自分の窓を塗りつぶす） |
+| `detect.js` | 画面の変化検知（カーソルを無視し、操作が落ち着いてから判定） |
+| `ocr.js` | 文字認識と、文字によるステップ完了の判定 |
+| `highlight.js` | 操作する場所のハイライト |
+| `coach.js` | 番号札（Set-of-Mark）と 🧭 AIにおまかせ |
+| `ui.js` | AI 設定画面・やりたいこと入力欄・⚙ 設定・ミニ窓・テーマ |
+| `main.js` | 起動（必ず最後） |
+| `selftest.js` | 自動テスト（`index.html?test` のときだけ読み込む） |
+
+CSS は `index.html` の中にあります。ミニ窓（Document PiP）へそのまま複製して使うためです。
+
+### 自動テスト
+
+`index.html?test` を Chrome で開くと、13 件のテストを実行して右下に結果を出します（約20秒）。
+画面共有と AI は偽物に差し替え、PowerPoint 風・Photoshop 風の画面を描いて確かめます。
+文字認識だけは本物を使うので、初回はネット接続が必要です。テストのあとは AI の設定（APIキー）を元に戻します。
+
+- ダブルクリックで開いた `index.html` には `?test` を付けにくいので、アドレスバーの末尾に `?test` を足して Enter
+- 直したら必ず実行して、すべて ✅ になることを確かめる
+
+### 1ファイル版を作る
+
+```bash
+tools/bundle.sh
+```
+
+`dist/slide-sensei.html` に、すべてをまとめた1つの HTML ができます（`--test` を付けるとテストも入る）。
+
+## 旧試作（archive/）
 
 - `main.py` / `start.command` / `requirements.txt`: Python + Gemini のネイティブ試作（現環境では Python が使えないため未使用）
-- `Extension/`: Chrome 拡張の試作
-- `docs/MVP_SPECIFICATION.md` など: Photoshop 版「操作ナビ」の初期仕様
+- `Extension/`: Chrome 拡張の試作（段階2の Chrome 拡張の参考）
+- `photoshop-docs/`・`photoshop-prototype/`: Photoshop 版「操作ナビ」の初期仕様と UI モック

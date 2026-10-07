@@ -1,0 +1,172 @@
+// スライド先生: 画面まわり（AI 設定画面・やりたいこと入力欄・⚙ 設定メニュー・ミニ窓・テーマ）
+
+// ─── AI の設定画面 ────────────────────────────────
+el.aiBtn.addEventListener("click", openAiDialog);
+el.aiClose.addEventListener("click", () => el.aiDialog.close());
+
+async function openAiDialog() {
+  const s = AI.settings;
+  for (const r of el.aiDialog.querySelectorAll("input[name=provider]")) r.checked = r.value === s.provider;
+  el.geminiKey.value = s.geminiKey;
+  el.geminiModel.value = s.geminiModel || AI.DEFAULT_GEMINI_MODEL;
+  el.aiTestResult.textContent = "";
+  el.aiDialog.showModal();
+  await renderBuiltinState();
+}
+
+async function renderBuiltinState() {
+  const status = await AI.builtinStatus();
+  el.builtinState.textContent = {
+    available: "この端末で使えます。画面の画像は端末の外に出ません。",
+    downloadable: "使えます。初回だけ「準備する」でモデル（約3〜4GB）を取り込みます。画像は端末の外に出ません。",
+    downloading: "モデルを取り込み中です…",
+    unavailable: "この端末・ブラウザでは使えません（Chrome 148 以降、空き容量 20GB 以上、メモリなどの条件があります）。",
+  }[status] ?? status;
+  el.builtinRadio.disabled = status === "unavailable";
+  el.builtinPrepare.hidden = status !== "downloadable" && status !== "downloading";
+}
+
+// モデルの取り込みはボタンを押した直後にしか始められない（ブラウザの制限）
+el.builtinPrepare.addEventListener("click", async () => {
+  el.builtinPrepare.disabled = true;
+  try {
+    await AI.prepareBuiltin((p) => { el.builtinState.textContent = `モデルを取り込み中… ${Math.round(p * 100)}%`; });
+    el.builtinState.textContent = "準備できました。この端末で使えます。";
+    el.builtinPrepare.hidden = true;
+  } catch (e) {
+    el.builtinState.textContent = `準備できませんでした: ${e.message}`;
+  } finally {
+    el.builtinPrepare.disabled = false;
+  }
+});
+
+function readAiForm() {
+  const provider = el.aiDialog.querySelector("input[name=provider]:checked")?.value ?? "off";
+  return {
+    provider,
+    geminiKey: el.geminiKey.value.trim(),
+    geminiModel: AI.normalizeModel(el.geminiModel.value),
+  };
+}
+
+el.aiSave.addEventListener("click", () => {
+  const next = readAiForm();
+  if (next.provider === "gemini" && !next.geminiKey) {
+    el.aiTestResult.textContent = "Gemini を使うには APIキーを入力してください。";
+    return;
+  }
+  AI.save(next);
+  renderAiButton();
+  addLog(`AI: ${AI.label()}`);
+  el.aiDialog.close();
+});
+
+// 接続テスト（画面の画像は送らない）
+el.aiTest.addEventListener("click", async () => {
+  const before = { ...AI.settings };
+  AI.save(readAiForm());
+  el.aiTestResult.textContent = "テスト中…";
+  try {
+    await AI.ping();
+    el.aiTestResult.textContent = "✓ つながりました";
+  } catch (e) {
+    el.aiTestResult.textContent = `✗ ${e.message}`;
+  } finally {
+    AI.save(before);   // 保存は「保存」を押したときだけ
+  }
+});
+
+// ─── 🧭 AIにおまかせ の入力欄（案内パネルの中にあるので、ミニ窓からも始められる） ─────
+el.makeBtn.addEventListener("click", () => {
+  if (!AI.enabled()) { openAiDialog(); return; }
+  el.goalInline.focus();
+});
+
+el.goalForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const goal = el.goalInline.value.trim();
+  if (!goal) { el.goalInline.focus(); return; }
+  if (!AI.enabled()) {
+    if (state.pip) showAi("AI が OFF です。ブラウザの「⚙ 設定」→「🤖 AI」から設定してください。", "error");
+    else openAiDialog();
+    return;
+  }
+  el.goalInline.blur();
+  startCoach(goal);
+});
+
+// ─── 設定メニュー（⚙） ─────────────────────────────
+el.settingsBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  el.settingsPop.hidden = !el.settingsPop.hidden;
+  el.settingsBtn.setAttribute("aria-expanded", String(!el.settingsPop.hidden));
+});
+document.addEventListener("click", (e) => {
+  if (!el.settingsPop.hidden && !el.settingsPop.contains(e.target)) {
+    el.settingsPop.hidden = true;
+    el.settingsBtn.setAttribute("aria-expanded", "false");
+  }
+});
+
+// ─── Mini window (Document Picture-in-Picture) ───────
+const canPip = "documentPictureInPicture" in window;
+if (!canPip) {
+  el.pipBtn.disabled = true;
+  el.pipBtn.title = "このブラウザはミニ窓に対応していません（Chrome 116 以降で使えます）";
+}
+el.pipBtn.addEventListener("click", () => {
+  el.pipBtn.classList.remove("attention");
+  if (state.pip) state.pip.close();
+  else openPip();
+});
+
+// 案内パネルを最前面の小窓へ移す。開いた小窓を返す
+async function openPip() {
+  const pip = await documentPictureInPicture.requestWindow({ width: 380, height: 600 });
+  pip.document.title = "スライド先生";
+  document.querySelectorAll("style, link[rel=stylesheet]").forEach((n) => pip.document.head.append(n.cloneNode(true)));
+  syncTheme(pip.document);
+  pip.document.body.classList.add("pip");
+  pip.document.body.append(el.tutor);
+  el.tutorHomeNote.hidden = false;
+  el.pipBtn.textContent = "📌 ミニ窓を閉じる";
+  state.pip = pip;
+  // タイマーをミニ窓側へ移す
+  if (state.stream && !state.paused) schedule();
+  if (state.countdown) startCountdown();
+
+  pip.addEventListener("pagehide", () => {
+    el.tutorHome.append(el.tutor);
+    el.tutorHomeNote.hidden = true;
+    el.pipBtn.textContent = "📌 ミニ窓で表示";
+    state.pip = null;
+    // ミニ窓と一緒に消えたタイマーを、元のページで動かし直す
+    if (state.stream && !state.paused) schedule();
+    if (state.countdown) startCountdown();
+  });
+  return pip;
+}
+
+// ミニ窓なしでこのタブが裏に回ると、タイマーが間引かれて見守りが遅れる
+// （共有1回につき1度だけ知らせる）
+let warnedHidden = false;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && state.stream && !state.pip && !warnedHidden) {
+    warnedHidden = true;
+    addLog("⚠ ブラウザが裏に回りました。ミニ窓で表示すると確実に見守れます");
+  }
+});
+
+// ─── Theme ────────────────────────────────────────────
+function syncTheme(doc) {
+  const t = document.documentElement.getAttribute("data-theme");
+  if (t) doc.documentElement.setAttribute("data-theme", t);
+}
+el.themeToggle.addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : cur === "light" ? "dark"
+    : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
+  document.documentElement.setAttribute("data-theme", next);
+  if (state.pip) syncTheme(state.pip.document);
+});
+
