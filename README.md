@@ -50,6 +50,28 @@ Web アプリは、画面共有の代わりに Chrome 拡張機能「スライ�
 3. ミニ窓の「🧭」欄にやりたいこと（例: セルを実行したい、GPU を使いたい）を書いて「開始」
 4. あとは Colab のタブで操作するだけ。光った場所を押すと、AI が確かめて次の一手を出します
 
+## Office アドイン（Excel・Word・PowerPoint）
+
+Office の中の「作業ウィンドウ」に、案内そのものを表示します（ミニ窓もブラウザとの行き来もいりません）。
+
+- 文書の状態を Office から**正確に**読む（Excel: 選択範囲・値・書式・罫線・表・グラフ／Word: 選択中の文章・書式・段落・表／PowerPoint: スライド・図形・文字）
+- やりたいことを書くと、AI が次の一手を1つ出す。押すボタンは**リボンの道順**（ホーム › 罫線 › 格子）で表示して読み上げ、
+  文書の中の場所（セル範囲・文章・図形）は**選択して見せる**
+- 文書が変わったら、AI が前後の状態を比べて「できたか」を確かめる。判断できないときは「できた？」で聞く
+- リボンのボタンそのものは光らせられません（Office の決まり）。光らせたいときは本体の画面共有モードを使います
+- AI は Gemini API 無料枠のみ（Office の中では Chrome 内蔵AI が使えない）。APIキーは作業ウィンドウの「AI の設定」で入れる
+
+### 入れ方（GitHub Pages などで https 公開したあと）
+
+Office アドインは **https で公開した場所からしか読み込めません**。公開したら:
+
+1. `tools/set-office-url.sh https://ユーザー名.github.io/リポジトリ名` → `dist/manifest.xml` ができる
+2. Finder で ⌘⇧G を押し、次のフォルダを開いて `manifest.xml` をコピー（フォルダがなければ作る）
+   - Excel: `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef`
+   - Word: `~/Library/Containers/com.microsoft.Word/Data/Documents/wef`
+   - PowerPoint: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef`
+3. Office を開き直し、「ホーム」→「アドイン」から「スライド先生」を選ぶ
+
 ## AI を使う（任意・無料）
 
 上部の「🤖 AI」から選びます。AI は次の3つに使います。
@@ -97,8 +119,10 @@ Web アプリは、画面共有の代わりに Chrome 拡張機能「スライ�
 | `practice.html` | PowerPoint がない環境用の練習用画面 |
 | `practice-colab.html` | Google Colab 風の練習用ページ（Web アプリ連携の練習用・ネット不要） |
 | `extension/` | Chrome 拡張機能「スライド先生 Web 連携」 |
+| `office/` | Office アドイン（Excel・Word・PowerPoint の作業ウィンドウ）。`taskpane.html?test` で自動テスト5件 |
 | `tools/capture-test.html` | 画面収録・変化検知の計測ツール（閾値調整用） |
 | `tools/bundle.sh` | すべてを1つの HTML にまとめる（1ファイルで配りたいとき） |
+| `tools/set-office-url.sh` | Office アドインのマニフェストに公開した URL を書き込む |
 | `docs/MVP_PLAN.md` | MVP の計画・計測結果・判断の記録 |
 | `docs/DEMO.md` | 発表デモの手順と台本 |
 | `archive/` | 旧試作（Python 版・Chrome 拡張・Photoshop 版の仕様） |

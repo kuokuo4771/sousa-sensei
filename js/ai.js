@@ -232,6 +232,56 @@ ${list || "（文字が見つかりませんでした）"}
     };
   }
 
+  // ─── Office アドイン用: 文書の状態（文章）を見て次の一手を答える ─────
+  // 画面の画像はなく、Office から読んだ正確な状態（選択範囲・値・書式・図形など）で判断する。
+  // リボンのボタンは光らせられないので、押す場所は「タブ → ボタン → 項目」の道順で答えさせる
+  const OFFICE_SCHEMA = {
+    type: "object",
+    properties: {
+      current_done: { type: "string", enum: ["yes", "no", "none"] },
+      status: { type: "string", enum: ["next", "done", "unsure"] },
+      say: { type: "string" },
+      path: { type: "array", items: { type: "string" } },
+      doc_target: { type: "string" },
+      reason: { type: "string" },
+    },
+    required: ["current_done", "status", "say", "path", "doc_target", "reason"],
+  };
+
+  // c: { host（"Excel" | "Word" | "PowerPoint"）, goal, done, current, before（指示を出したときの状態の文章。なければ null）,
+  //      now（いまの状態の文章）, targetKind（doc_target に書くもの。例: "セル範囲（A1:C5 の形）"） }
+  // 返り値: { currentDone, status, say, path（リボンの道順）, docTarget, reason }
+  async function coachOffice(c) {
+    const text = `アプリ: Mac の ${c.host}（日本語版）。利用者は ${c.host} の初心者です。
+やりたいこと: ${c.goal}
+これまでに終わった手順:
+${c.done.map((d, i) => `${i + 1}. ${d}`).join("\n") || "（なし）"}
+いま案内中の手順: ${c.current ?? "（なし。最初の一手を考えてください）"}
+${c.before ? `\n「いま案内中の手順」を出したときの文書の状態:\n${c.before}\n` : ""}
+いまの文書の状態（${c.host} から直接読んだ正確な情報）:
+${c.now}
+
+次を JSON で答えてください。
+- current_done: 「いま案内中の手順」が済んでいれば "yes"、まだなら "no"、案内中の手順がなければ "none"。
+  文書の状態の変化で判断する（選択範囲が変わった、値や書式が変わった、図形が増えた、など）。
+  リボンのタブを開くだけ・メニューを開くだけの手順は文書が変わらないので、次の手順の結果が出ていれば "yes" にする。迷ったら "yes"
+- status: やりたいことが全部終わっていれば "done"、次の一手を示せるなら "next"、判断できないなら "unsure"
+- say: 次にやる一手を1文で（例:「『ホーム』タブの『罫線』の ▼ から『格子』を選んでください」）。done なら完了のひとこと
+- path: その一手で押すリボンの道順を、画面の表記のまま順番に（例: ["ホーム", "罫線", "格子"]）。リボンを使わない操作なら空の配列
+- doc_target: その一手で操作する文書の中の場所。${c.targetKind}。なければ空文字
+- reason: そう判断した理由を短く
+ルール: 一度に1つの操作だけ。Mac の ${c.host} にないボタン名を作らない。`;
+    const r = await ask(text, [], OFFICE_SCHEMA);
+    return {
+      currentDone: { yes: true, no: false }[r.current_done] ?? null,
+      status: ["next", "done", "unsure"].includes(r.status) ? r.status : "unsure",
+      say: str(r.say),
+      path: Array.isArray(r.path) ? r.path.map((p) => str(p, 20)).filter(Boolean).slice(0, 5) : [],
+      docTarget: str(r.doc_target, 60),
+      reason: str(r.reason),
+    };
+  }
+
   // 接続テスト（画面の画像は送らない）
   async function ping() {
     const r = await ask('動作確認です。{"ok": true} を返してください。', [],
@@ -242,7 +292,7 @@ ${list || "（文字が見つかりませんでした）"}
   return {
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
-    coach, ping, IMAGE_MAX_SIDE, resetForTest,
+    coach, coachOffice, ping, IMAGE_MAX_SIDE, resetForTest,
     DEFAULT_GEMINI_MODEL, normalizeModel,
   };
 })();

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スライド先生</title>
+<!-- Office アドイン（作業ウィンドウ）。Excel・Word・PowerPoint の中に表示される。https で公開した場所から読み込む必要がある -->
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  :root {
+    --bg: #faf8f3; --panel: #fff; --panel-alt: #f6f3ec; --ink: #1b1d22; --muted: #616874; --border: #e6e1d5;
+    --accent: #c0442b; --ai: #2e6ba0; --ai-soft: #e1ecf5; --success: #4e7b4a; --success-soft: #dce9d3;
+    --warn: #b7791f; --warn-soft: #f5e8cc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --panel: #1e2126; --panel-alt: #22262c; --ink: #f1eee5; --muted: #9199a4; --border: #2e333b;
+      --accent: #e36a50; --ai: #6aa6d9; --ai-soft: #1e2c3b; --success: #8cb782; --success-soft: #223022;
+      --warn: #d4a24c; --warn-soft: #3b2d1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px; background: var(--bg); color: var(--ink);
+    font: 13.5px/1.55 "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; display: grid; gap: 10px; }
+  header { display: flex; align-items: baseline; gap: 6px; }
+  header strong { font-size: 15px; }
+  header span { color: var(--muted); font-size: 12px; }
+  header .ai-state { margin-left: auto; font-size: 11px; color: var(--ai); }
+  .notice { padding: 10px; border-radius: 8px; background: var(--warn-soft); font-size: 12.5px; }
+  form { display: flex; gap: 6px; }
+  input[type=text], input[type=password] { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  button { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .card { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); }
+  .step-num { font-size: 11px; font-weight: 700; color: var(--ai); letter-spacing: .08em; }
+  .step-text { font-size: 15px; font-weight: 700; margin: 4px 0; }
+  .step-hint { margin: 0; font-size: 12px; color: var(--muted); }
+  .path { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
+  .path-chip { padding: 3px 10px; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 700; font-size: 12.5px; }
+  .path-sep { color: var(--muted); font-weight: 700; }
+  .target { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12.5px; }
+  .target code { padding: 2px 6px; border-radius: 4px; background: var(--ai-soft); color: var(--ai); }
+  .target button { padding: 3px 8px; font-size: 12px; }
+  .card.flash { animation: flash 1s ease; }
+  @keyframes flash { 25% { background: var(--success-soft); box-shadow: 0 0 0 5px color-mix(in oklab, var(--success) 40%, transparent); } }
+  .done { text-align: center; background: var(--success-soft); }
+  .done strong { display: block; font-size: 17px; }
+  .ai-box { padding: 10px 12px; border-radius: 10px; background: var(--ai-soft); }
+  .ai-box.error { background: var(--warn-soft); }
+  .ai-box p { margin: 0; }
+  .confirm { padding: 10px 12px; border-radius: 10px; background: var(--success-soft); display: grid; gap: 8px; }
+  .confirm p { margin: 0; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .yes { background: var(--success); border-color: var(--success); color: #fff; }
+  .watch { font-size: 12px; color: var(--muted); }
+  details { font-size: 12.5px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  details .fields { display: grid; gap: 6px; margin-top: 6px; }
+  ul.log { list-style: none; margin: 0; padding: 0; font-size: 11.5px; color: var(--muted); }
+  small { color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <header><strong>🧭 スライド先生</strong><span id="appName"></span><span class="ai-state" id="aiState"></span></header>
+
+  <div class="notice" id="notice" hidden>
+    Office の外で開いています。このページは Excel・Word・PowerPoint の「アドイン」から開いてください（README の「Office アドイン」）。
+  </div>
+
+  <form id="goalForm">
+    <input type="text" id="goalInput" autocomplete="off" placeholder="やりたいこと（例: A1〜C5 に罫線を引きたい）">
+    <button class="primary" type="submit">開始</button>
+  </form>
+
+  <div class="card" id="stepCard" hidden>
+    <div class="step-num" id="stepNum"></div>
+    <div class="step-text" id="stepText"></div>
+    <p class="step-hint" id="stepHint">リボンで押す場所の道順です（左から順に）</p>
+    <div class="path" id="pathRow" hidden></div>
+    <div class="target" id="targetRow" hidden>文書の中の場所: <code id="targetText"></code><button id="showBtn">見せる</button></div>
+  </div>
+
+  <div class="card done" id="doneCard" hidden><strong>🎉 できました！</strong>やりたいことは完了です。</div>
+
+  <div class="ai-box" id="aiBox" hidden><p id="aiText"></p></div>
+
+  <div class="confirm" id="confirmBox" hidden>
+    <p id="confirmText"></p>
+    <div class="row"><button class="yes" id="yesBtn">できた ✓</button><button id="notYetBtn">まだ</button></div>
+  </div>
+
+  <div class="row">
+    <button id="askBtn">🤖 AIに聞く</button>
+    <button id="restartBtn">やり直し</button>
+    <button id="nextBtn">次へ →</button>
+  </div>
+  <div class="watch" id="watch"></div>
+  <ul class="log" id="log"></ul>
+
+  <details>
+    <summary>AI の設定・読み上げ</summary>
+    <div class="fields">
+      <label><input type="checkbox" id="aiProvider"> Gemini API 無料枠を使う</label>
+      <small>⚠ 無料枠では、送った内容（文書の状態の文章）が Google の製品改善に使われます。社外秘の文書では使わないでください。
+        Office の中では Chrome 内蔵AI は使えません。</small>
+      <label>APIキー <input type="password" id="geminiKey" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
+      <label>モデル <input type="text" id="geminiModel" spellcheck="false"></label>
+      <button id="aiSave">保存</button>
+      <label><input type="checkbox" id="voiceOn" checked> 案内を読み上げる</label>
+    </div>
+  </details>
+
+  <script src="../js/ai.js"></script>
+  <script src="office-host.js"></script>
+  <script src="office-coach.js"></script>
+</body>
+</html>
