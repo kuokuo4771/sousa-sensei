@@ -3,6 +3,9 @@
 // - target で起きた変化を hub へ知らせる
 // Service Worker はしばらく使わないと止まるので、どのタブとつないでいるかは storage.session に覚えておく
 
+// 拡張機能のアイコンを押したら、サイドパネル（sidepanel.html）を開く。こちらは本体なしで単独で動く
+chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+
 const ids = {
   async get() {
     return chrome.storage.session.get({ hubTabId: null, targetTabId: null });

@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "スライド先生 Web 連携",
-  "version": "0.1.0",
-  "description": "スライド先生と Web アプリ（Google Colab など）をつなぎ、ページの部品を読み取って、ページの上に直接ハイライトを出します。",
-  "permissions": ["tabs", "scripting", "storage"],
+  "version": "0.2.0",
+  "description": "Google Colab などの Web ページの横（サイドパネル）で、AI が次の一手を教え、ページの上に直接ハイライトを出します。",
+  "permissions": ["tabs", "scripting", "storage", "sidePanel"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
+  "action": { "default_title": "スライド先生を開く" },
+  "side_panel": { "default_path": "sidepanel.html" },
   "content_scripts": [
     {
       "matches": ["file:///*/index.html*", "file:///*/slide-sensei*.html*", "https://*.github.io/*"],
