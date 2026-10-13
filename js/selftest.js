@@ -273,7 +273,7 @@ const SelfTest = (() => {
       let req = null;
       window.fetch = async (url, opts) => {
         req = { url, opts };
-        const answer = '```json\n{"current_done":"yes","status":"next","say":"次へ","target_id":1,"target_text":"挿入","reason":"r"}\n```';
+        const answer = '```json\n{"current_done":"yes","status":"next","say":"[1]の「挿入」タブを押してください","target_id":1,"target_text":"挿入","reason":"r"}\n```';
         return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: answer }] } }] }));
       };
       AI.save({ provider: "gemini", geminiKey: "TEST-KEY", geminiModel: "Gemini 3.8 Flash" });
@@ -286,6 +286,7 @@ const SelfTest = (() => {
       if (req.opts.headers["x-goog-api-key"] !== "TEST-KEY" || req.url.includes("TEST-KEY")) return "APIキーをヘッダーで送っていない";
       if (body.contents[0].parts.filter((p) => p.inlineData).length !== 2) return "前後2枚の画像を送っていない";
       if (r.currentDone !== true || r.targetId !== 1 || r.targetText !== "挿入") return `答えの読み取りが違う: ${JSON.stringify(r)}`;
+      if (r.say !== "「挿入」タブを押してください") return `案内に番号札の番号が残っています: ${r.say}`;
     }],
     ["レッスン「はじめてのスライド」: 文字で確かめて自動で進み、場所を光らせる", async () => {
       await share();

@@ -153,6 +153,8 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   }
 
   const str = (v, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  // 「[30]の「セルを実行」」のような番号札の番号は、利用者には意味がないので消す
+  const dropTagNumbers = (s) => s.replace(/\s*[\[［]\d+[\]］]\s*の?/g, "").trim();
 
   // ─── 画面を見て次の一手を答える ─────────────────
   // 場所は「番号札（文字認識で見つけた画面上の文字）から選ぶ」形で答えさせる。
@@ -210,7 +212,9 @@ ${list || "（文字が見つかりませんでした）"}
   クリックや入力の瞬間は画像に写らないので、その「結果」で判断する（タブやメニューが開いた、文字が入った、
   新しいボタンやタブが現れた、など）。画面が手順の目的に沿って変わっていれば "yes"。
   はっきり失敗している（何も変わっていない、違う画面に行った）ときだけ "no"。迷ったら "yes"
-- status: やりたいことが全部終わっていれば "done"、次の一手を示せるなら "next"、画面から判断できないなら "unsure"
+- status: やりたいことが達成できていれば "done"、次の一手を示せるなら "next"、画面から判断できないなら "unsure"。
+  達成できたかは「これまでに終わった手順」といまの画面で判断する。やりたいことに書かれていない作業を足さない
+  （例:「セルを実行したい」なら、セルを1回実行できた時点で done。セルの中身が空でもよい）
 - say: 次にやる一手を1文で（例:「上の『挿入』タブをクリックしてください」）。
   案内中の手順がまだなら、その手順のやり方を言い直す。done なら完了のひとこと
 - target_id: その一手で操作する場所の番号札の番号（一覧から1つ）。
@@ -218,13 +222,15 @@ ${list || "（文字が見つかりませんでした）"}
 - target_text: target_id の番号札に書かれている文字を一覧のとおりに（番号の読み違いを確かめるため）。0 なら空文字
 - box: target_id が 0 のとき、その場所の範囲 [ymin, xmin, ymax, xmax]（${nowName}の左上を0、右下を1000）。分からなければ空の配列
 - reason: そう判断した理由を短く
-ルール: 一度に1つの操作だけ。メニュー名やボタン名を推測で作らない。`;
+ルール: 一度に1つの操作だけ。メニュー名やボタン名を推測で作らない。
+「これまでに終わった手順」と同じ手順をくり返させない（同じ手順に戻りそうなら、やりたいことがもう達成できているかを考え直す）。
+say に番号札の番号（[12] など）は書かない。`;
     const r = await ask(text, images, COACH_SCHEMA);
     const id = Number(r.target_id);
     return {
       currentDone: { yes: true, no: false }[r.current_done] ?? null,
       status: ["next", "done", "unsure"].includes(r.status) ? r.status : "unsure",
-      say: str(r.say),
+      say: dropTagNumbers(str(r.say)),
       targetId: c.items.some((it) => it.id === id) ? id : null,
       targetText: str(r.target_text, 40),
       box: toBox(r.box),

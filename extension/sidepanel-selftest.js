@@ -88,8 +88,8 @@ const SidepanelTest = (() => {
     sent.length = answers.length = calls.length = 0;
     injected = 0;
     Object.assign(page, { url: "https://colab.research.google.com/drive/abc", title: "練習.ipynb - Colab", items: ITEMS, agent: true });
-    Object.assign(run, { goal: "", done: [], current: null, before: null, finished: false, busy: false, again: false });
-    $("confirmBox").hidden = $("aiBox").hidden = true;
+    Object.assign(run, { goal: "", done: [], current: null, before: null, finished: false, busy: false, again: false, loopAsked: new Set() });
+    $("confirmBox").hidden = $("aiBox").hidden = $("loopBox").hidden = true;
   }
 
   const tests = [
@@ -162,6 +162,20 @@ const SidepanelTest = (() => {
       await wait(200);
       if (!visible("notice")) return "お知らせが出ていません";
       if (calls.length) return "AI を呼んでしまいました";
+    }],
+    ["終わった手順がまた出たら（堂々めぐり）、「もうできた？」と聞き、押せば完了にする", async () => {
+      answers.push({ say: "「セルを実行」をクリックしてください", targetId: 3, targetText: "セルを実行" });
+      await start("セルを実行したい");
+      await until(() => run.current);
+      answers.push({ currentDone: true, say: "「コードの入力欄」をクリックしてください", targetId: 0 });
+      changed();
+      await until(() => run.done.length === 1 && run.current);
+      if (visible("loopBox")) return "まだくり返していないのに聞いています";
+      answers.push({ say: "コードを実行するために、「セルを実行」をクリックしてください", targetId: 3, targetText: "セルを実行" });
+      $("nextBtn").click();
+      if (!(await until(() => visible("loopBox")))) return "同じ手順に戻ったのに聞いていません";
+      $("finishBtn").click();
+      if (!run.finished || !visible("doneCard") || visible("loopBox")) return "「もうできた」で完了になりません";
     }],
     ["AI が OFF なら、設定を促す", async () => {
       const on = AI.enabled;

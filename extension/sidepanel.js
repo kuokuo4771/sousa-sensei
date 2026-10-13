@@ -27,7 +27,7 @@ const tabApi = {
 const $ = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
   "pageName", "notice", "goalForm", "goalInput", "stepCard", "stepNum", "stepText", "doneCard", "aiBox", "aiText",
-  "confirmBox", "confirmText", "yesBtn", "notYetBtn", "askBtn", "restartBtn", "nextBtn", "watch", "log", "aiState",
+  "confirmBox", "confirmText", "yesBtn", "notYetBtn", "loopBox", "finishBtn", "continueBtn", "askBtn", "restartBtn", "nextBtn", "watch", "log", "aiState",
   "providerOff", "providerBuiltin", "providerGemini", "builtinState", "builtinPrepare", "geminiKey", "geminiModel",
   "aiSave", "aiTest", "aiResult", "voiceOn",
 ].map((id) => [id, $(id)]));
@@ -36,6 +36,7 @@ const run = {
   tab: null,                // 案内しているタブ { id, windowId, title, url }
   goal: "", done: [], current: null, before: null, finished: false,
   busy: false, again: false, retry: 0, lastChangeAt: 0, stuckShown: false,
+  loopAsked: new Set(),     // 「くり返されています」をもう聞いた手順
 };
 
 // ─── 表示 ───────────────────────────────────────
@@ -152,8 +153,8 @@ async function startGoal(goal) {
     return;
   }
   if (!(await attach())) return;
-  Object.assign(run, { goal, done: [], current: null, before: null, finished: false, stuckShown: false });
-  ui.aiBox.hidden = true;
+  Object.assign(run, { goal, done: [], current: null, before: null, finished: false, stuckShown: false, loopAsked: new Set() });
+  ui.aiBox.hidden = ui.loopBox.hidden = true;
   ui.confirmBox.hidden = true;
   addLog(`🧭 開始: ${goal}`);
   render();
@@ -199,19 +200,19 @@ function apply(r, items, snapshot) {
     flash();
   }
   if (!run.current && r.status === "done") {
-    run.finished = true;
-    ui.confirmBox.hidden = true;
-    ui.aiBox.hidden = true;
-    clearHighlight();
-    render();
-    addLog("🎉 完了");
-    speak("できました。やりたいことは完了です。");
+    finish();
     return;
   }
   if (!run.current && r.status === "next" && r.say) {
     Object.assign(run, { current: r.say, before: snapshot, lastChangeAt: Date.now(), stuckShown: false });
     ui.confirmBox.hidden = true;
-    ui.aiBox.hidden = true;
+    ui.aiBox.hidden = ui.loopBox.hidden = true;
+    // 終わった手順と同じ手順がまた出たら、AI が堂々めぐりしているかもしれないので、もう達成できたか聞く（1手順に1回）
+    const key = stepKey(r.say);
+    if (run.done.some((d) => stepKey(d) === key) && !run.loopAsked.has(key)) {
+      run.loopAsked.add(key);
+      ui.loopBox.hidden = false;
+    }
     render();
     clearHighlight();
     highlight(r, items);
@@ -232,8 +233,24 @@ function apply(r, items, snapshot) {
   }
 }
 
+function finish() {
+  run.finished = true;
+  ui.confirmBox.hidden = ui.aiBox.hidden = ui.loopBox.hidden = true;
+  clearHighlight();
+  render();
+  addLog("🎉 完了");
+  speak("できました。やりたいことは完了です。");
+}
+
+// 手順を比べるための目印。「」の中の名前（ボタン名など）があればそれで、なければ記号と空白を除いた文で比べる
+function stepKey(say) {
+  const names = [...say.matchAll(/[「『]([^」』]+)[」』]/g)].map((m) => m[1].trim()).sort();
+  return names.length ? names.join("|") : say.replace(/[\s、。・「」『』（）()]/g, "");
+}
+
 // 「できた ✓」「次へ」: AI の判定を待たずに次の一手へ
 function manualDone() {
+  ui.loopBox.hidden = true;
   if (run.current) {
     run.done.push(run.current);
     addLog(`✓ ${run.current}（手動）`);
@@ -278,6 +295,8 @@ ui.goalForm.addEventListener("submit", (e) => {
 ui.yesBtn.addEventListener("click", manualDone);
 ui.nextBtn.addEventListener("click", manualDone);
 ui.notYetBtn.addEventListener("click", () => { ui.confirmBox.hidden = true; });
+ui.finishBtn.addEventListener("click", finish);
+ui.continueBtn.addEventListener("click", () => { ui.loopBox.hidden = true; });
 ui.askBtn.addEventListener("click", async () => {
   if (!run.goal) { ui.goalInput.focus(); return; }
   if (await attach()) ask();
