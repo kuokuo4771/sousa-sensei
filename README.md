@@ -7,6 +7,8 @@ PowerPoint の画面を見ながら、**次にやることを1つずつ、操作
 - AI は任意（無料）。Chrome 内蔵AI（端末内）か Gemini API 無料枠を選べます → [AI を使う](#ai-を使う任意無料)
 - 案内は「ミニ窓」（常に最前面の小窓）に出るので、PowerPoint の横に置いて使えます
 
+**使い方は [docs/USAGE.md](docs/USAGE.md)** にまとめています（本体・Web アプリ連携・Office アドインの3つ）。
+
 ## 使い方
 
 1. **Google Chrome** で [`index.html`](index.html) を開く（ダブルクリックで OK。GitHub Pages で公開したら、その URL を開くだけ）
@@ -124,6 +126,7 @@ Office アドインは **https で公開した場所からしか読み込めま�
 | `tools/bundle.sh` | すべてを1つの HTML にまとめる（1ファイルで配りたいとき） |
 | `tools/set-office-url.sh` | Office アドインのマニフェストに公開した URL を書き込む |
 | `docs/MVP_PLAN.md` | MVP の計画・計測結果・判断の記録 |
+| `docs/USAGE.md` | **使い方ガイド**（3つの使い方・ボタンの意味・困ったとき） |
 | `docs/DEMO.md` | 発表デモの手順と台本 |
 | `archive/` | 旧試作（Python 版・Chrome 拡張・Photoshop 版の仕様） |
 
