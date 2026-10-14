@@ -70,7 +70,7 @@ const SidepanelTest = (() => {
       calls.push(c);
       const a = answers.shift();
       if (!a) throw new Error("偽の AI の答えが足りません");
-      return { currentDone: null, status: "next", say: "", targetId: null, targetText: "", box: null, reason: "", ...a };
+      return { currentDone: null, status: "next", say: "", targetId: null, targetText: "", box: null, inputText: "", reason: "", ...a };
     };
   }
 
@@ -176,6 +176,17 @@ const SidepanelTest = (() => {
       if (!(await until(() => visible("loopBox")))) return "同じ手順に戻ったのに聞いていません";
       $("finishBtn").click();
       if (!run.finished || !visible("doneCard") || visible("loopBox")) return "「もうできた」で完了になりません";
+    }],
+    ["入力する中身（コード）は、手順の下にコピーできる形で出し、次の手順で消す", async () => {
+      const code = "nums = [3, 1, 2]\nprint(sorted(nums))";
+      answers.push({ say: "下のコードをコードセルに貼り付けてください", targetId: 4, targetText: "コード", inputText: code });
+      await start("ソートを書きたい");
+      if (!(await until(() => visible("inputBox")))) return "入力する中身が出ていません";
+      if ($("inputText").textContent !== code) return `中身が違います: ${$("inputText").textContent}`;
+      answers.push({ currentDone: true, say: "「セルを実行」を押してください", targetId: 3, targetText: "セルを実行" });
+      changed();
+      if (!(await until(() => run.done.length === 1))) return "次の手順に進みません";
+      if (visible("inputBox")) return "次の手順でも前の中身が残っています";
     }],
     ["AI が OFF なら、設定を促す", async () => {
       const on = AI.enabled;

@@ -166,6 +166,12 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   }
 
   const str = (v, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  // 入力する中身（コードなど）。字下げや改行はそのまま残す
+  const block = (v, max = 4000) => (typeof v === "string" ? v.replace(/^\s*\n|\s+$/g, "").slice(0, max) : "");
+  const INPUT_RULE = `- input_text: その一手で入力・貼り付けする中身（コード、数式、文章など）があるときは、そのまま使える完成形を書く。
+  「〜を入力してください」とだけ言って、中身を利用者に考えさせない（教えるのはあなたの役目）。
+  初心者向けに短く分かりやすく。コードなら日本語の短いコメントを付ける。このとき say は
+  「下のコードをコードセルに貼り付けてください」のように、中身は input_text にあると伝える。入力のない一手なら空文字`;
   // 「[30]の「セルを実行」」のような番号札の番号は、利用者には意味がないので消す
   const dropTagNumbers = (s) => s.replace(/\s*[\[［]\d+[\]］]\s*の?/g, "").trim();
 
@@ -182,9 +188,10 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
       target_id: { type: "integer" },
       target_text: { type: "string" },
       box: { type: "array", items: { type: "number" } },
+      input_text: { type: "string" },
       reason: { type: "string" },
     },
-    required: ["current_done", "status", "say", "target_id", "target_text", "reason"],
+    required: ["current_done", "status", "say", "target_id", "target_text", "input_text", "reason"],
   };
 
   // AI が答えた [ymin, xmin, ymax, xmax]（0〜1000）を、画面に対する割合の枠にする。おかしな値なら null
@@ -198,7 +205,7 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   //      appeared / disappeared（その間に新しく現れた・消えた文字）, app（共有中のウインドウ名）, goal（やりたいこと）,
   //      done（終わった手順の配列）, current（いま案内中の手順。なければ null）, items（番号札 [{ id, text, x0..y1 }]） }
   // 返り値: { currentDone: true | false | null, status: "next" | "done" | "unsure",
-  //          say, targetId（なければ null）, targetText, box, reason }
+  //          say, targetId（なければ null）, targetText, box, inputText（入力する中身。なければ空文字）, reason }
   async function coach(c) {
     const list = c.items.map((it) =>
       `[${it.id}] ${it.text} (${Math.round(((it.x0 + it.x1) / 2) * 100)}%, ${Math.round(((it.y0 + it.y1) / 2) * 100)}%)`).join("\n");
@@ -230,6 +237,7 @@ ${list || "（文字が見つかりませんでした）"}
   （例:「セルを実行したい」なら、セルを1回実行できた時点で done。セルの中身が空でもよい）
 - say: 次にやる一手を1文で（例:「上の『挿入』タブをクリックしてください」）。
   案内中の手順がまだなら、その手順のやり方を言い直す。done なら完了のひとこと
+${INPUT_RULE}
 - target_id: その一手で操作する場所の番号札の番号（一覧から1つ）。
   番号札のない場所（アイコンだけのボタン、図形、スライドの中など）なら 0
 - target_text: target_id の番号札に書かれている文字を一覧のとおりに（番号の読み違いを確かめるため）。0 なら空文字
@@ -247,6 +255,7 @@ say に番号札の番号（[12] など）は書かない。`;
       targetId: c.items.some((it) => it.id === id) ? id : null,
       targetText: str(r.target_text, 40),
       box: toBox(r.box),
+      inputText: block(r.input_text),
       reason: str(r.reason),
     };
   }
@@ -262,14 +271,15 @@ say に番号札の番号（[12] など）は書かない。`;
       say: { type: "string" },
       path: { type: "array", items: { type: "string" } },
       doc_target: { type: "string" },
+      input_text: { type: "string" },
       reason: { type: "string" },
     },
-    required: ["current_done", "status", "say", "path", "doc_target", "reason"],
+    required: ["current_done", "status", "say", "path", "doc_target", "input_text", "reason"],
   };
 
   // c: { host（"Excel" | "Word" | "PowerPoint"）, goal, done, current, before（指示を出したときの状態の文章。なければ null）,
   //      now（いまの状態の文章）, targetKind（doc_target に書くもの。例: "セル範囲（A1:C5 の形）"） }
-  // 返り値: { currentDone, status, say, path（リボンの道順）, docTarget, reason }
+  // 返り値: { currentDone, status, say, path（リボンの道順）, docTarget, inputText（入力する中身）, reason }
   async function coachOffice(c) {
     const text = `アプリ: Mac の ${c.host}（日本語版）。利用者は ${c.host} の初心者です。
 やりたいこと: ${c.goal}
@@ -288,6 +298,7 @@ ${c.now}
 - say: 次にやる一手を1文で（例:「『ホーム』タブの『罫線』の ▼ から『格子』を選んでください」）。done なら完了のひとこと
 - path: その一手で押すリボンの道順を、画面の表記のまま順番に（例: ["ホーム", "罫線", "格子"]）。リボンを使わない操作なら空の配列
 - doc_target: その一手で操作する文書の中の場所。${c.targetKind}。なければ空文字
+${INPUT_RULE}
 - reason: そう判断した理由を短く
 ルール: 一度に1つの操作だけ。Mac の ${c.host} にないボタン名を作らない。`;
     const r = await ask(text, [], OFFICE_SCHEMA);
@@ -297,6 +308,7 @@ ${c.now}
       say: str(r.say),
       path: Array.isArray(r.path) ? r.path.map((p) => str(p, 20)).filter(Boolean).slice(0, 5) : [],
       docTarget: str(r.doc_target, 60),
+      inputText: block(r.input_text),
       reason: str(r.reason),
     };
   }

@@ -96,6 +96,7 @@ Chrome 拡張機能を使います。**Colab のページの横（Chrome のサ�
 2. ツールバーの **スライド先生のアイコン** を押す → 右側にサイドパネルが開く
 3. やりたいこと（例:「セルを実行したい」「GPU を使いたい」）を書いて **「開始」**
 4. Colab のページで、**赤く光っている場所**を操作する。ページが落ち着くと AI が確かめて次の一手を出します
+   コードや文章を入力する手順では、AI が書いた中身が **「✍ 入力する内容」** に出ます。「📋 コピー」→ 光っている場所をクリック → 貼り付け（⌘V / Ctrl+V）
 5. AI が「まだ」と判断したときや迷ったときは **「できた？」** が出ます。できていれば **「できた ✓」**
 6. 困ったら **「🤖 AIに聞く」**（いまのページを見て聞き直す）、急ぐなら **「次へ →」**
 
@@ -161,9 +162,10 @@ Office アドインは https で公開した場所からしか読み込めませ
 | `practice.html` | PowerPoint 風の練習用画面。PowerPoint がない PC でのデモや練習に（① で「タブ」を共有） |
 | `practice-colab.html` | Colab 風の練習用ページ（ネット不要）。② の練習に |
 | `tools/capture-test.html` | 画面収録と変化検知の計測ツール。反応が鈍い・反応しすぎるときの調査に |
-| `index.html?test` | 本体の自動テスト（16件）。アドレスバーの末尾に `?test` を足して Enter |
-| `tools/bundle-sidepanel.sh` | 拡張機能のサイドパネルの自動テスト（9件）を `dist/sidepanel-test.html` にまとめる。できたファイルを開くとテストが走る |
+| `index.html?test` | 本体の自動テスト（17件）。アドレスバーの末尾に `?test` を足して Enter |
+| `tools/bundle-sidepanel.sh` | 拡張機能のサイドパネルの自動テスト（10件）を `dist/sidepanel-test.html` にまとめる。できたファイルを開くとテストが走る |
 | `tools/bundle-agent.sh` | ページの読み取り係（ハイライトの位置・コードの入力欄など）の自動テスト（7件）を `dist/agent-test.html` にまとめる |
+| `tools/bundle-office.sh` | Office 版の自動テスト（5件）を `dist/office-test.html` にまとめる（Office がなくても動く） |
 | `office/taskpane.html?test` | Office 版の自動テスト（5件） |
 | `tools/bundle.sh` | 全部を1つの HTML（`dist/slide-sensei.html`）にまとめる。1ファイルで配りたいときに |
 

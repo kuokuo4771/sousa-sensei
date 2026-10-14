@@ -27,6 +27,8 @@ function render() {
     el.stepNum.textContent = L.coach ? `STEP ${state.step + 1}` : `STEP ${state.step + 1} / ${total}`;
     el.stepText.textContent = step?.text ?? "🧭 AI が画面を見て、最初の一手を考えています…";
     el.stepHint.textContent = step?.hint ?? "";
+    el.inputBox.hidden = !step?.input;
+    el.inputText.textContent = step?.input ?? "";
     el.expectChip.textContent = L.coach ? "🧭 画面が変わるたびに AI ができたかを確かめます" : EXPECT_LABEL[step.expect];
     const useOcr = ocr.on && !!step?.check;
     el.checkChip.hidden = !useOcr;

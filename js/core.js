@@ -45,7 +45,7 @@ const el = Object.fromEntries([
   "captureVideo", "targetBox", "targetTag", "startCaptureBtn", "practiceBtn", "stopCaptureBtn",
   "pauseBtn", "statMotion", "statNet", "statChanges", "tutorHome", "tutorHomeNote", "tutor",
   "tutorLessonName", "tutorStatus", "progressTitle", "progressCount", "progressFill",
-  "stepCard", "stepNum", "stepText", "stepHint", "expectChip", "checkChip",
+  "stepCard", "stepNum", "stepText", "stepHint", "inputBox", "inputText", "copyInputBtn", "expectChip", "checkChip",
   "guide", "guideCanvas", "guideBox", "guideSay", "guideMissing",
   "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn", "watch", "log",
   "ocrMeta", "ocrText", "backBtn", "restartBtn", "nextBtn",

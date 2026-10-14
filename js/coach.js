@@ -317,7 +317,7 @@ function applyCoach(L, r, items, snapshot) {
     return;
   }
   if (!coach.current && r.status === "next" && r.say) {
-    L.steps.push({ text: r.say, hint: r.reason, expect: "any" });
+    L.steps.push({ text: r.say, hint: r.reason, input: r.inputText, expect: "any" });
     state.step = L.steps.length - 1;
     state.stepToken++;
     state.lastChangeAt = Date.now();
@@ -333,6 +333,7 @@ function applyCoach(L, r, items, snapshot) {
   }
   if (coach.current && r.currentDone === false && r.status !== "unsure") {
     showAi(`まだのようです。${r.say}`);
+    if (r.inputText) { currentStep().input = r.inputText; render(); }
     targetFromAI(r, items);
     // AI の判定が厳しすぎることもあるので、できていれば人がすぐ進められるようにする（自動では進めない）
     el.confirmText.textContent = "AI は「まだ」と判断しました。できていれば「できた ✓」を押してください。";
@@ -364,3 +365,18 @@ function coachManualDone() {
   runCoach();
 }
 
+
+// 「📋 コピー」: AI が書いた入力する中身（コードなど）をコピーする。
+// ミニ窓の中で押されたときは、ミニ窓の側のクリップボードを使う
+el.copyInputBtn.addEventListener("click", async () => {
+  const btn = el.copyInputBtn;
+  const win = btn.ownerDocument.defaultView;
+  try {
+    await win.navigator.clipboard.writeText(el.inputText.textContent);
+    btn.textContent = "✓ コピーしました";
+  } catch {
+    win.getSelection().selectAllChildren(el.inputText);
+    btn.textContent = "選びました。⌘C / Ctrl+C でコピー";
+  }
+  setTimeout(() => { btn.textContent = "📋 コピー"; }, 2000);
+});

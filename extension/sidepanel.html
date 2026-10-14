@@ -35,6 +35,11 @@
   .step-hint { margin: 0; font-size: 12px; color: var(--muted); }
   .card.flash { animation: flash 1s ease; }
   @keyframes flash { 25% { background: var(--success-soft); box-shadow: 0 0 0 5px color-mix(in oklab, var(--success) 40%, transparent); } }
+  .input { display: grid; gap: 6px; padding: 10px 12px; }
+  .input-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: var(--ai); }
+  .input-head button { padding: 4px 10px; font-size: 12px; }
+  .input pre { margin: 0; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border);
+    font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; overflow-x: auto; max-height: 50vh; }
   .done { text-align: center; background: var(--success-soft); }
   .done strong { display: block; font-size: 17px; }
   .ai-box { padding: 10px 12px; border-radius: 10px; background: var(--ai-soft); }
@@ -72,6 +77,12 @@
     <div class="step-num" id="stepNum"></div>
     <div class="step-text" id="stepText"></div>
     <p class="step-hint">ページの上で赤く光っている場所を操作してください</p>
+  </div>
+
+  <div class="card input" id="inputBox" hidden>
+    <div class="input-head"><span>✍ 入力する内容</span><button id="copyBtn">📋 コピー</button></div>
+    <pre id="inputText"></pre>
+    <p class="step-hint">「コピー」を押して、光っている場所をクリックしてから貼り付け（⌘V / Ctrl+V）</p>
   </div>
 
   <div class="card done" id="doneCard" hidden><strong>🎉 できました！</strong>やりたいことは完了です。</div>

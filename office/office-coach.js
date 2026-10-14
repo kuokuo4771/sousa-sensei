@@ -10,13 +10,13 @@ const SETTLE_MS = 1000;     // 状態が変わってから、これだけ落ち�
 const $ = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
   "appName", "notice", "goalForm", "goalInput", "stepCard", "stepNum", "stepText", "stepHint", "pathRow", "targetRow",
-  "targetText", "showBtn", "doneCard", "aiBox", "aiText", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
+  "targetText", "showBtn", "inputBox", "inputText", "copyBtn", "doneCard", "aiBox", "aiText", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
   "askBtn", "nextBtn", "restartBtn", "watch", "log", "aiProvider", "geminiKey", "geminiModel", "aiSave", "aiState", "voiceOn",
 ].map((id) => [id, $(id)]));
 
 const office = { host: null };   // office-host.js の ExcelHost / WordHost / PowerPointHost
 const run = {
-  goal: "", done: [], current: null, path: [], target: "", before: null, finished: false,
+  goal: "", done: [], current: null, path: [], target: "", input: "", before: null, finished: false,
   busy: false, again: false, lastState: "", settleTimer: 0, pollTimer: 0,
 };
 
@@ -40,6 +40,8 @@ function render() {
   }));
   ui.targetRow.hidden = !run.target;
   ui.targetText.textContent = run.target;
+  ui.inputBox.hidden = !run.current || !run.input;
+  ui.inputText.textContent = run.input;
 }
 
 function setWatch(text) { ui.watch.textContent = text; }
@@ -69,7 +71,7 @@ function flash() {
 
 // ─── 案内の流れ ─────────────────────────────────────
 function startGoal(goal) {
-  Object.assign(run, { goal, done: [], current: null, path: [], target: "", before: null, finished: false });
+  Object.assign(run, { goal, done: [], current: null, path: [], target: "", input: "", before: null, finished: false });
   ui.aiBox.hidden = true;
   ui.confirmBox.hidden = true;
   addLog(`🧭 開始: ${goal}`);
@@ -121,7 +123,7 @@ async function apply(r, now) {
     return;
   }
   if (!run.current && r.status === "next" && r.say) {
-    Object.assign(run, { current: r.say, path: r.path, target: r.docTarget, before: now });
+    Object.assign(run, { current: r.say, path: r.path, target: r.docTarget, input: r.inputText ?? "", before: now });
     ui.confirmBox.hidden = true;
     ui.aiBox.hidden = true;
     render();
@@ -131,6 +133,7 @@ async function apply(r, now) {
   }
   if (run.current && r.currentDone === false && r.status !== "unsure") {
     showAi(`まだのようです。${r.say}`);
+    if (r.inputText) { run.input = r.inputText; render(); }
     ui.confirmText.textContent = "AI は「まだ」と判断しました。できていれば「できた ✓」を押してください。";
     ui.confirmBox.hidden = false;
     return;
@@ -246,3 +249,15 @@ if (new URLSearchParams(location.search).has("test")) {
 } else {
   ui.notice.hidden = false;
 }
+
+// 「📋 コピー」: AI が書いた入力する中身（数式・文章など）をコピーする
+ui.copyBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(run.input);
+    ui.copyBtn.textContent = "✓ コピーしました";
+  } catch {
+    getSelection().selectAllChildren(ui.inputText);
+    ui.copyBtn.textContent = "選びました。⌘C / Ctrl+C でコピー";
+  }
+  setTimeout(() => { ui.copyBtn.textContent = "📋 コピー"; }, 2000);
+});

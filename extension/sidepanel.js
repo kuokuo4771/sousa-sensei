@@ -26,7 +26,7 @@ const tabApi = {
 
 const $ = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
-  "pageName", "notice", "goalForm", "goalInput", "stepCard", "stepNum", "stepText", "doneCard", "aiBox", "aiText",
+  "pageName", "notice", "goalForm", "goalInput", "stepCard", "stepNum", "stepText", "inputBox", "inputText", "copyBtn", "doneCard", "aiBox", "aiText",
   "confirmBox", "confirmText", "yesBtn", "notYetBtn", "loopBox", "finishBtn", "continueBtn", "askBtn", "restartBtn", "nextBtn", "watch", "log", "aiState",
   "providerOff", "providerBuiltin", "providerGemini", "builtinState", "builtinPrepare", "geminiKey", "geminiModel",
   "aiSave", "aiTest", "aiResult", "voiceOn",
@@ -35,6 +35,7 @@ const ui = Object.fromEntries([
 const run = {
   tab: null,                // 案内しているタブ { id, windowId, title, url }
   goal: "", done: [], current: null, before: null, finished: false,
+  input: "",                // いまの手順で入力する中身（コードなど。AI が書いたもの）
   busy: false, again: false, retry: 0, lastChangeAt: 0, stuckShown: false,
   loopAsked: new Set(),     // 「くり返されています」をもう聞いた手順
 };
@@ -46,6 +47,8 @@ function render() {
   ui.stepCard.hidden = run.finished || !run.goal;
   ui.stepNum.textContent = `STEP ${run.done.length + 1}`;
   ui.stepText.textContent = run.current ?? "🧭 AI がページを見て、最初の一手を考えています…";
+  ui.inputBox.hidden = run.finished || !run.current || !run.input;
+  ui.inputText.textContent = run.input;
   ui.aiState.textContent = `AI: ${AI.label()}`;
 }
 function setWatch(text) { ui.watch.textContent = text; }
@@ -153,7 +156,7 @@ async function startGoal(goal) {
     return;
   }
   if (!(await attach())) return;
-  Object.assign(run, { goal, done: [], current: null, before: null, finished: false, stuckShown: false, loopAsked: new Set() });
+  Object.assign(run, { goal, done: [], current: null, before: null, finished: false, input: "", stuckShown: false, loopAsked: new Set() });
   ui.aiBox.hidden = ui.loopBox.hidden = true;
   ui.confirmBox.hidden = true;
   addLog(`🧭 開始: ${goal}`);
@@ -204,7 +207,7 @@ function apply(r, items, snapshot) {
     return;
   }
   if (!run.current && r.status === "next" && r.say) {
-    Object.assign(run, { current: r.say, before: snapshot, lastChangeAt: Date.now(), stuckShown: false });
+    Object.assign(run, { current: r.say, input: r.inputText ?? "", before: snapshot, lastChangeAt: Date.now(), stuckShown: false });
     ui.confirmBox.hidden = true;
     ui.aiBox.hidden = ui.loopBox.hidden = true;
     // 終わった手順と同じ手順がまた出たら、AI が堂々めぐりしているかもしれないので、もう達成できたか聞く（1手順に1回）
@@ -221,6 +224,7 @@ function apply(r, items, snapshot) {
   }
   if (run.current && r.currentDone === false && r.status !== "unsure") {
     showAi(`まだのようです。${r.say}`);
+    if (r.inputText) { run.input = r.inputText; render(); }
     highlight(r, items);
     showConfirm("AI は「まだ」と判断しました。できていれば「できた ✓」を押してください。");
     return;
@@ -296,6 +300,18 @@ ui.yesBtn.addEventListener("click", manualDone);
 ui.nextBtn.addEventListener("click", manualDone);
 ui.notYetBtn.addEventListener("click", () => { ui.confirmBox.hidden = true; });
 ui.finishBtn.addEventListener("click", finish);
+// 入力する中身をコピーする（Colab のセルなどに貼り付けてもらう）
+ui.copyBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(run.input);
+    ui.copyBtn.textContent = "✓ コピーしました";
+  } catch {
+    // コピーできない環境では、選んだ状態にして ⌘C / Ctrl+C を促す
+    getSelection().selectAllChildren(ui.inputText);
+    ui.copyBtn.textContent = "選びました。⌘C / Ctrl+C でコピー";
+  }
+  setTimeout(() => { ui.copyBtn.textContent = "📋 コピー"; }, 2000);
+});
 ui.continueBtn.addEventListener("click", () => { ui.loopBox.hidden = true; });
 ui.askBtn.addEventListener("click", async () => {
   if (!run.goal) { ui.goalInput.focus(); return; }

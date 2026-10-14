@@ -374,6 +374,23 @@ const SelfTest = (() => {
       await settle();
       if (coach.done.length !== 1 || state.step !== 1) return `「できた ✓」で進まなかった（完了 ${coach.done.length}・ステップ ${state.step + 1}）`;
     }],
+    ["おまかせ: 入力する中身（コード）は AI が書き、コピーできる形で出す", async () => {
+      AI.save({ provider: "builtin" });
+      const code = "# 数を小さい順に並べる\nnums = [3, 1, 2]\nfor n in sorted(nums):\n    print(n)";
+      let prompt = "";
+      fake.ai = (text) => {
+        prompt = text;
+        return { current_done: "none", status: "next", say: "下のコードをコードセルに貼り付けてください", target_id: 0, target_text: "",
+          input_text: `\n${code}\n\n`, reason: "" };
+      };
+      await share();
+      await show(() => pptScreen());
+      startCoach("ソートを書きたい");
+      await settle();
+      if (!prompt.includes("input_text") || !prompt.includes("中身を利用者に考えさせない")) return "AI に中身を書くよう頼んでいない";
+      if (el.inputBox.hidden) return "入力する中身が表示されていない";
+      if (el.inputText.textContent !== code) return `中身が崩れている（字下げ・改行）: ${JSON.stringify(el.inputText.textContent)}`;
+    }],
     ["画面全体の共有: ミニ窓の場所を白く塗りつぶしてから読む", async () => {
       const sw = screen.width, sh = screen.height;
       const src = document.createElement("canvas");
