@@ -67,7 +67,13 @@ function resolveTarget(r, items) {
   const want = r.targetText ? norm(r.targetText) : "";
   if (!want || (byId && norm(byId.text) === want)) return byId;
   const exact = items.filter((i) => norm(i.text) === want);
-  const loose = exact.length ? exact : items.filter((i) => norm(i.text).includes(want) || want.includes(norm(i.text)));
+  // ゆるく合わせるときも、AI の答えの半分以上の長さが重なる札だけにする
+  // （「の」「表」のような1文字の札が、長い答えの一部として選ばれると、まったく別の場所が光る）
+  const overlapOk = (t) => t.length >= Math.max(2, Math.ceil(want.length / 2));
+  const loose = exact.length ? exact : items.filter((i) => {
+    const t = norm(i.text);
+    return t.includes(want) || (want.includes(t) && overlapOk(t));
+  });
   if (!loose.length) return byId;
   if (!byId) return loose[0];
   const dist = (i) => Math.hypot(i.x0 - byId.x0, i.y0 - byId.y0);

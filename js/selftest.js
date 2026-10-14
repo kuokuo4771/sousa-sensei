@@ -263,6 +263,32 @@ const SelfTest = (() => {
         }
       }
     }],
+    ["ハイライト: 文字認識の読み違い・広すぎる範囲・1文字の札で、範囲が大きく外れない", async () => {
+      // 1行につながったタブ名。「挿入」を「挿人」と読み違え、「描画」は範囲が右へ大きく伸び、アイコンを背の高い「回」と読んだ
+      const read = { w: 1920, h: 1200, words: [
+        { t: "ホーム", x0: 0.010, y0: 0.050, x1: 0.040, y1: 0.065 },
+        { t: "挿人", x0: 0.045, y0: 0.050, x1: 0.065, y1: 0.065 },
+        { t: "描画", x0: 0.070, y0: 0.050, x1: 0.400, y1: 0.065 },
+        { t: "回", x0: 0.500, y0: 0.020, x1: 0.540, y1: 0.200 },
+      ] };
+      const items = buildItems(read);
+      if (items.some((i) => i.text.includes("回"))) return "背の高いアイコンを文字として残しています";
+      const line = items.find((i) => i.text.includes("挿人"));
+      if (!line) return `番号札がない: ${items.map((i) => i.text).join(" / ")}`;
+      if (line.x1 > 0.12) return `「描画」の範囲が右へ伸びたままです（右端 ${line.x1.toFixed(3)}）`;
+      const b = boxForText(line, "挿入", items);
+      if (b.x0 < 0.044 || b.x1 > 0.066) return `読み違えた「挿入」で行まるごと光らせています（${b.x0.toFixed(3)}〜${b.x1.toFixed(3)}）`;
+      // AI の番号が一覧にないとき、答えの文字の一部でしかない1文字の札を選ばない
+      const picked = resolveTarget({ targetId: 99, targetText: "表を挿入" },
+        [{ id: 1, text: "表", x0: 0, y0: 0, x1: 0.01, y1: 0.01 }, { id: 2, text: "挿入", x0: 0.5, y0: 0.5, x1: 0.52, y1: 0.52 }]);
+      if (picked?.id !== 2) return `1文字の札「${picked?.text}」を選びました`;
+    }],
+    ["AI: 答えの JSON に壊れた「\\」（Bad Unicode escape の原因）があっても読める", async () => {
+      const raw = '{"say":"C:\\Users の「保存」を押す\\u30","status":"next",\n"reason":"改行\nあり"}';
+      let r;
+      try { r = AI.parseJson(raw); } catch (e) { return `読めません: ${e.message}`; }
+      if (r.status !== "next" || !r.say.includes("保存")) return `読み取りが違う: ${JSON.stringify(r)}`;
+    }],
     ["AI: 表示名で入力したモデル名をモデルコードに直す", async () => {
       const cases = { "Gemini 3.5 Flash Lite": "gemini-3.5-flash-lite", " models/gemini-3.8-flash ": "gemini-3.8-flash", "": AI.DEFAULT_GEMINI_MODEL };
       for (const [input, want] of Object.entries(cases)) {

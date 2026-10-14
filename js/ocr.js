@@ -52,7 +52,8 @@ function ensureOcr() {
 //   text : 画面全体の文字（空白なし）
 //   body : リボンより下の文字
 //   words: [{ t, x0, y0, x1, y1 }]（位置は画面に対する割合 0〜1）
-function readScreen() {
+//   shot : 読んだ画面そのもの（色つき）。keepShot のときだけ。AI に見せる画像と番号札の位置を、同じ瞬間の画面にそろえるため
+function readScreen({ keepShot = false } = {}) {
   const run = async () => {
     const worker = await ensureOcr();
     if (!worker || !state.stream) return null;
@@ -62,6 +63,13 @@ function readScreen() {
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(frame.width * scale);
     canvas.height = Math.round(frame.height * scale);
+    let shot = null;
+    if (keepShot) {
+      shot = document.createElement("canvas");
+      shot.width = canvas.width;
+      shot.height = canvas.height;
+      shot.getContext("2d").drawImage(frame.source, 0, 0, shot.width, shot.height);
+    }
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     ctx.filter = "grayscale(1)";
     ctx.drawImage(frame.source, 0, 0, canvas.width, canvas.height);
@@ -78,7 +86,7 @@ function readScreen() {
         x1: w.bbox.x1 / canvas.width, y1: w.bbox.y1 / canvas.height,
       }))
       .filter((w) => w.t);
-    const read = { words, text: words.map((w) => w.t).join(""), w: canvas.width, h: canvas.height };
+    const read = { words, text: words.map((w) => w.t).join(""), w: canvas.width, h: canvas.height, shot };
     const ribbonBottom = Math.max(0, ...findAll(read, RIBBON_WORDS).filter((b) => b.y1 < 0.5).map((b) => b.y1));
     read.body = words.filter((w) => (w.y0 + w.y1) / 2 > ribbonBottom).map((w) => w.t).join("");
     el.ocrMeta.textContent = `（${((performance.now() - started) / 1000).toFixed(1)}秒・${read.text.length}文字）`;

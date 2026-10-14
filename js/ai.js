@@ -146,10 +146,23 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   // JSON だけを返すよう頼んでも ```json で囲まれることがあるので取り出す
   function parseJson(raw) {
     const s = String(raw).trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "");
-    try { return JSON.parse(s); } catch { /* 下で前後の余計な文字を除いて再挑戦 */ }
+    try { return JSON.parse(s); } catch { /* 下で直して再挑戦 */ }
     const m = s.match(/\{[\s\S]*\}/);
-    if (m) return JSON.parse(m[0]);
-    throw new Error("AI の答えを読み取れませんでした");
+    if (m) {
+      try { return JSON.parse(m[0]); } catch { /* 下で直して再挑戦 */ }
+      try { return JSON.parse(repairJson(m[0])); } catch { /* 読めなかった */ }
+    }
+    throw new Error("AI の答えを読み取れませんでした。「🤖 AIに聞く」でもう一度試してください");
+  }
+
+  // AI がたまに書く、JSON として正しくない文字を直す
+  // - 壊れた「\」（「\u30」のように4桁そろわない \u、Windows の「C:\Users」など）→ 「\」そのものとして読む
+  //   （JSON.parse が「Bad Unicode escape」などで失敗する原因）
+  // - 文字列の中の生の改行・タブ → 空白
+  function repairJson(s) {
+    return s
+      .replace(/\\(u[0-9a-fA-F]{4}|["\\/bfnrt])|\\/g, (all, ok) => (ok ? all : "\\\\"))
+      .replace(/[\u0000-\u001f]+/g, " ");
   }
 
   const str = (v, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -298,7 +311,7 @@ ${c.now}
   return {
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
-    coach, coachOffice, ping, IMAGE_MAX_SIDE, resetForTest,
+    coach, coachOffice, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
     DEFAULT_GEMINI_MODEL, normalizeModel,
   };
 })();

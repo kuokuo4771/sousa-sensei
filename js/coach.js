@@ -14,13 +14,31 @@ function showAi(text, cls = "") {
   el.aiText.textContent = text;
 }
 
+// 文字認識の単語の範囲の行き過ぎを直す（光らせる範囲が大きく崩れるのを防ぐ）
+// - 文字の高さがほかの単語よりずっと高いもの（アイコンや図形を文字と読んだもの）は除く
+// - 文字数のわりに横に長すぎる範囲（後ろの余白やとなりの部品まで伸びたもの）は、文字数に見合う幅に切り詰める
+function tidyWords(read) {
+  const heights = read.words.map((w) => (w.y1 - w.y0) * read.h).sort((a, b) => a - b);
+  const median = heights[Math.floor(heights.length / 2)] ?? 0;
+  const out = [];
+  for (const w of read.words) {
+    const hPx = (w.y1 - w.y0) * read.h;
+    if (median && hPx > median * 3) continue;
+    const chars = [...norm(w.t)];
+    const est = chars.reduce((s, ch) => s + (/[\x20-\x7e]/.test(ch) ? 0.6 : 1), 0) * hPx;   // 文字数に見合う幅（px）
+    const widthPx = (w.x1 - w.x0) * read.w;
+    out.push(widthPx > est * 1.8 + hPx ? { ...w, x1: w.x0 + (est * 1.3) / read.w } : w);
+  }
+  return out;
+}
+
 // 文字認識の単語を、AI に選ばせる番号札にまとめる。
 // 同じ行で近い単語はつなげる（「新しい」「スラ」「イド」→「新しいスライド」）。
 // 日本語では語の中のすき間と隣のボタンとのすき間が同じくらいなので、隣のボタン名までつながることがある。
 // そのため元の単語（parts）を残し、光らせるときに AI が答えた文字の部分だけに絞る（boxForText）
 function buildItems(read) {
   const items = [];
-  for (const w of read.words) {
+  for (const w of tidyWords(read)) {
     const last = items[items.length - 1];
     const hPx = (w.y1 - w.y0) * read.h;
     const sameLine = last && Math.abs((last.y0 + last.y1) / 2 - (w.y0 + w.y1) / 2) * read.h < hPx * 0.6;
@@ -56,14 +74,20 @@ async function askCoach(ctx, before = null) {
     images = tagImage({ source: obs.shot, width: obs.shot.width, height: obs.shot.height }, items);
     app = obs.app;
   } else {
-    const read = ocr.on ? await readScreen() : null;
+    // 番号札の位置と AI に見せる画像は、文字認識で読んだのと同じ瞬間の画面を使う
+    // （別々に撮ると、読む間（数秒）に画面が動いたとき、札とハイライトがずれる）
+    const read = ocr.on ? await readScreen({ keepShot: true }) : null;
     items = read ? buildItems(read) : [];
-    const frame = await grabFrame();
-    if (!frame) throw new Error("画面を取得できませんでした");
-    try {
-      images = tagImage(frame, items);
-    } finally {
-      frame.close();
+    if (read?.shot) {
+      images = tagImage({ source: read.shot, width: read.shot.width, height: read.shot.height }, items);
+    } else {
+      const frame = await grabFrame();
+      if (!frame) throw new Error("画面を取得できませんでした");
+      try {
+        images = tagImage(frame, items);
+      } finally {
+        frame.close();
+      }
     }
     app = state.surface === "monitor"
       ? "画面全体を共有中（どのアプリかは画面から判断する。白い四角は案内用の窓を隠したもので、操作の対象ではない）"
@@ -98,6 +122,17 @@ function boxForText(chosen, want, items) {
         if (k >= 0) return sliceParts(run.flatMap((i) => i.parts), k, k + w.length) ?? unionBox(run);
       }
     }
+  }
+  // 文字認識の読み違い（「挿入」→「挿人」など）でぴったり合わないときは、札の中でいちばん似ている部分に絞る。
+  // 札まるごと（隣のボタン名までつながった長い行）を光らせると、範囲が大きく外れて見えるため
+  if (text.length > w.length) {
+    let best = -1, bestScore = 0;
+    for (let s = 0; s + w.length <= text.length; s++) {
+      let score = 0;
+      for (let i = 0; i < w.length; i++) if (text[s + i] === w[i]) score++;
+      if (score > bestScore) { best = s; bestScore = score; }
+    }
+    if (bestScore >= Math.ceil(w.length / 2)) return sliceParts(chosen.parts, best, best + w.length) ?? chosen;
   }
   return chosen;
 }
