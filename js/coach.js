@@ -311,13 +311,14 @@ function applyCoach(L, r, items, snapshot) {
     state.target = null;
     hideConfirm();
     el.aiBox.hidden = true;
+    if (r.teach) showAi(`📚 学んだこと: ${r.teach}`);
     render();
     addLog("🎉 やりたいことが完了しました");
     speak("できました。やりたいことは完了です。お疲れさまでした。");
     return;
   }
   if (!coach.current && r.status === "next" && r.say) {
-    L.steps.push({ text: r.say, hint: r.reason, input: r.inputText, expect: "any" });
+    L.steps.push({ text: r.say, hint: r.teach ? `💡 ${r.teach}` : r.reason, input: r.inputText, expect: "any" });
     state.step = L.steps.length - 1;
     state.stepToken++;
     state.lastChangeAt = Date.now();

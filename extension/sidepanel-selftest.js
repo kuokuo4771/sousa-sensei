@@ -70,7 +70,7 @@ const SidepanelTest = (() => {
       calls.push(c);
       const a = answers.shift();
       if (!a) throw new Error("偽の AI の答えが足りません");
-      return { currentDone: null, status: "next", say: "", targetId: null, targetText: "", box: null, inputText: "", reason: "", ...a };
+      return { currentDone: null, status: "next", say: "", targetId: null, targetText: "", box: null, inputText: "", teach: "", hint: "", reason: "", ...a };
     };
   }
 
@@ -88,7 +88,7 @@ const SidepanelTest = (() => {
     sent.length = answers.length = calls.length = 0;
     injected = 0;
     Object.assign(page, { url: "https://colab.research.google.com/drive/abc", title: "練習.ipynb - Colab", items: ITEMS, agent: true });
-    Object.assign(run, { goal: "", done: [], current: null, before: null, finished: false, busy: false, again: false, loopAsked: new Set() });
+    Object.assign(run, { goal: "", done: [], current: null, before: null, finished: false, busy: false, again: false, loopAsked: new Set(), learned: [], summary: "" });
     $("confirmBox").hidden = $("aiBox").hidden = $("loopBox").hidden = true;
   }
 
@@ -187,6 +187,42 @@ const SidepanelTest = (() => {
       changed();
       if (!(await until(() => run.done.length === 1))) return "次の手順に進みません";
       if (visible("inputBox")) return "次の手順でも前の中身が残っています";
+    }],
+    ["教える: ポイントを出し、学習モードではヒント→「答えを見る」の順。完了で「学んだこと」をまとめる", async () => {
+      $("learnOn").checked = true;
+      const code = "nums = [3, 1, 2]\nprint(sorted(nums))";
+      answers.push({ say: "下のコードをコードセルに貼り付けてください", targetId: 4, targetText: "コード", inputText: code,
+        teach: "sorted() は並べ替えた新しいリストを返します", hint: "並べ替えには sorted() が使えます" });
+      await start("ソートを学びたい");
+      if (!(await until(() => run.current))) return "手順が出ません";
+      if (!visible("teachBox") || !$("teachText").textContent.includes("sorted()")) return "ポイントが出ていません";
+      if (!visible("thinkBox") || !$("hintText").textContent.includes("並べ替えには")) return "ヒントが出ていません";
+      if (visible("answerBox") || visible("copyBtn")) return "考える前に答えが見えています";
+      $("revealBtn").click();
+      if (!visible("answerBox") || visible("thinkBox") || $("inputText").textContent !== code) return "「答えを見る」で答えが出ません";
+      answers.push({ currentDone: true, status: "done", say: "完了です", teach: "リストは sorted() で並べ替えられることを学びました" });
+      changed();
+      if (!(await until(() => run.finished))) return "完了になりません";
+      if (!$("doneSummary").textContent.includes("学びました")) return `まとめが出ていません: ${$("doneSummary").textContent}`;
+      if (!visible("learnedBox") || !$("learnedList").textContent.includes("sorted() は並べ替えた")) return "「学んだこと」に手順のポイントがありません";
+    }],
+    ["教える: 「1行ずつ説明」と「質問」に AI が答える", async () => {
+      $("learnOn").checked = false;
+      const code = "nums = [3, 1, 2]\nprint(sorted(nums))";
+      answers.push({ say: "下のコードをコードセルに貼り付けてください", targetId: 4, targetText: "コード", inputText: code });
+      await start("ソートを学びたい");
+      await until(() => run.current);
+      if (!visible("answerBox")) return "学習モード OFF なのに答えが隠れています";
+      let explained = null, asked = null;
+      AI.explainCode = async (c) => { explained = c; return [{ code: "nums = [3, 1, 2]", explain: "数のリストを作る" }, { code: "print(sorted(nums))", explain: "並べ替えて表示する" }]; };
+      AI.answerQuestion = async (c) => { asked = c; return "sorted は並べ替えた結果を返す関数です。"; };
+      $("explainBtn").click();
+      if (!(await until(() => visible("explainList")))) return "説明が出ません";
+      if (explained?.code !== code || $("explainList").children.length !== 2) return "コードを渡していないか、説明の数が違います";
+      $("questionInput").value = "sorted って何？";
+      $("questionForm").requestSubmit();
+      if (!(await until(() => $("aiText").textContent.includes("並べ替えた結果")))) return `答えが出ません: ${$("aiText").textContent}`;
+      if (asked?.question !== "sorted って何？" || !asked.image || asked.goal !== "ソートを学びたい") return "質問・画面・やりたいことを AI に渡していません";
     }],
     ["AI が OFF なら、設定を促す", async () => {
       const on = AI.enabled;

@@ -31,7 +31,7 @@ const AgentTest = (() => {
   const tests = [
     ["練習ページの部品（ウェブ部品の中の「セルを実行」も）を集める", async () => {
       const { items } = await ask({ type: "items" });
-      if (!find(items, "セルを実行")) return `「セルを実行」がありません: ${items.map((i) => i.text).join(" / ")}`;
+      if (!items.some((i) => i.text.startsWith("セルを実行"))) return `「セルを実行」がありません: ${items.map((i) => i.text).join(" / ")}`;
       if (items.some((it) => it.x0 < 0 || it.x1 > 1.001 || it.y0 < 0 || it.y1 > 1.001)) return "画面の外にはみ出した位置があります";
     }],
     ["横にスクロールする枠の中の部品は、枠の見えている範囲で光らせる（右へ突き抜けない）", async () => {
@@ -46,21 +46,37 @@ const AgentTest = (() => {
       const r = overlayParts().box.getBoundingClientRect();
       if (r.right > 340) return `ハイライトが枠の外まで伸びています（右端 ${Math.round(r.right)}px）`;
     }],
-    ["コードの入力欄（Monaco）は、見えない入力部品ではなくエディター全体を光らせる", async () => {
-      fixture(`<div class="monaco-editor" style="position:fixed;left:40px;top:300px;width:500px;height:90px;background:#f7f7f7">
-        <textarea aria-label="Editor content;Press Alt+F1 for Accessibility Options." style="position:absolute;left:0;top:0;width:1px;height:1px;opacity:0"></textarea>
-        <div class="native-edit-context" role="textbox" aria-label="Editor content" style="position:absolute;left:0;top:0;width:900px;height:18px"></div>
+    ["コードの入力欄は、セルごとにエディター全体を光らせる（本物の Colab と同じ作り。2つ以上のセル）", async () => {
+      // セル 8: クリック済み。Monaco が作られ、見えない入力部品（Editor content）の幅は 8 万 px を超える
+      // セル 9: まだクリックしていない。コードを表示しているだけで、入力部品がない
+      fixture(`<div style="position:fixed;left:40px;top:260px;width:520px;display:grid;gap:12px">
+        <div class="cell code" aria-label="セル 8: コードセル: "><button aria-label="セルを実行">▶</button>
+          <div class="editor flex lazy-editor" style="width:480px;height:48px;background:#f7f7f7"><div class="editor flex monaco"><div class="monaco-editor" style="width:480px;height:48px">
+            <div class="overflow-guard" style="overflow:hidden;width:480px;height:48px">
+              <textarea class="inputarea" role="textbox" aria-label="Editor content" style="position:absolute;left:6px;top:0;width:84297px;height:19px"></textarea>
+              <div class="view-lines">print("こんにちは")</div>
+            </div></div></div></div></div>
+        <div class="cell code" aria-label="セル 9: コードセル: "><button aria-label="セルを実行">▶</button>
+          <div class="editor flex lazy-editor" style="width:480px;height:48px;background:#f7f7f7"><pre tabindex="0">nums = [3, 1, 2]
+print(sorted(nums))</pre></div></div>
       </div>`);
       const { items } = await ask({ type: "items" });
-      const eds = items.filter((it) => it.text === "コードの入力欄");
-      if (eds.length !== 1) return `コードの入力欄が ${eds.length} 個あります: ${items.map((i) => i.text).join(" / ")}`;
-      if (items.some((it) => /editor content/i.test(it.text))) return "「Editor content」のまま残っています";
-      const w = (eds[0].x1 - eds[0].x0) * innerWidth;
-      if (Math.abs(w - 500) > 2) return `エディター全体の幅になっていません（${Math.round(w)}px）`;
-      await ask({ type: "highlight", id: eds[0].id, label: "コードの入力欄" });
+      const names = items.map((i) => i.text);
+      if (names.some((t) => /editor content/i.test(t))) return "「Editor content」のまま残っています";
+      const e1 = find(items, "コードの入力欄（セル 8: print(\"こんにちは\")）");
+      const e2 = find(items, "コードの入力欄（セル 9: nums = [3, 1, 2]）");
+      if (!e1 || !e2) return `セルごとの入力欄がありません: ${names.join(" / ")}`;
+      if (items.filter((i) => i.text.startsWith("コードの入力欄（セル 8")).length !== 1) return "セル 8 の入力欄が重複しています";
+      if (!find(items, "セルを実行（セル 8）") || !find(items, "セルを実行（セル 9）")) return `実行ボタンにセルの番号がありません: ${names.join(" / ")}`;
+      for (const it of [e1, e2]) {
+        const w = (it.x1 - it.x0) * innerWidth;
+        if (Math.abs(w - 480) > 2) return `「${it.text}」がエディター全体の幅になっていません（${Math.round(w)}px）`;
+      }
+      await ask({ type: "highlight", id: e2.id, label: "コードの入力欄" });
       await frame();
       const r = overlayParts().box.getBoundingClientRect();
-      if (r.left > 40 || r.right < 540 || r.right > 550) return `ハイライトの範囲が違います（${Math.round(r.left)}〜${Math.round(r.right)}px）`;
+      const want = e2.y0 * innerHeight;
+      if (r.right > innerWidth || r.width > 500 || Math.abs(r.top + 4 - want) > 3) return `ハイライトの範囲が違います（${Math.round(r.left)},${Math.round(r.top)} 幅 ${Math.round(r.width)}px）`;
     }],
     ["画面の大半を覆う名前付きの入れ物は、押す場所として数えない", async () => {
       fixture(`<div aria-label="ノートブック全体" style="position:fixed;inset:0;pointer-events:none"></div>`);

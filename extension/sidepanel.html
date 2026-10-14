@@ -40,11 +40,24 @@
   .input-head button { padding: 4px 10px; font-size: 12px; }
   .input pre { margin: 0; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border);
     font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; overflow-x: auto; max-height: 50vh; }
+  .teach { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--warn-soft); font-size: 12.5px; }
+  .teach span, .learned span { font-weight: 700; font-size: 12px; }
+  .teach p { margin: 2px 0 0; }
+  .think { display: grid; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--ai-soft); font-size: 12.5px; }
+  .think p { margin: 0; }
+  .think button { justify-self: start; }
+  #answerBox { display: grid; gap: 6px; }
+  ol.explain { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 12.5px; }
+  ol.explain code { display: block; font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ai); white-space: pre-wrap; }
+  .done p { margin: 4px 0 0; }
+  .learned { text-align: left; margin-top: 8px; font-size: 12.5px; }
+  .learned ul { margin: 4px 0 0; padding-left: 18px; }
+  form.question { margin-top: 2px; }
   .done { text-align: center; background: var(--success-soft); }
   .done strong { display: block; font-size: 17px; }
   .ai-box { padding: 10px 12px; border-radius: 10px; background: var(--ai-soft); }
   .ai-box.error { background: var(--warn-soft); }
-  .ai-box p { margin: 0; }
+  .ai-box p { margin: 0; white-space: pre-wrap; }
   .confirm { padding: 10px 12px; border-radius: 10px; background: var(--success-soft); display: grid; gap: 8px; }
   .confirm p { margin: 0; }
   .row { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -77,15 +90,28 @@
     <div class="step-num" id="stepNum"></div>
     <div class="step-text" id="stepText"></div>
     <p class="step-hint">ページの上で赤く光っている場所を操作してください</p>
+    <div class="teach" id="teachBox" hidden><span>💡 ポイント</span><p id="teachText"></p></div>
   </div>
 
   <div class="card input" id="inputBox" hidden>
     <div class="input-head"><span>✍ 入力する内容</span><button id="copyBtn">📋 コピー</button></div>
-    <pre id="inputText"></pre>
-    <p class="step-hint">「コピー」を押して、光っている場所をクリックしてから貼り付け（⌘V / Ctrl+V）</p>
+    <div class="think" id="thinkBox" hidden>
+      <p>🤔 まず自分で考えてみましょう。<span id="hintText"></span></p>
+      <button id="revealBtn">👀 答えを見る</button>
+    </div>
+    <div id="answerBox">
+      <pre id="inputText"></pre>
+      <div class="row"><button id="explainBtn">🔍 1行ずつ説明</button></div>
+      <ol class="explain" id="explainList" hidden></ol>
+      <p class="step-hint">「コピー」を押して、光っている場所をクリックしてから貼り付け（⌘V / Ctrl+V）</p>
+    </div>
   </div>
 
-  <div class="card done" id="doneCard" hidden><strong>🎉 できました！</strong>やりたいことは完了です。</div>
+  <div class="card done" id="doneCard" hidden>
+    <strong>🎉 できました！</strong>
+    <p id="doneSummary">やりたいことは完了です。</p>
+    <div class="learned" id="learnedBox" hidden><span>📚 学んだこと</span><ul id="learnedList"></ul></div>
+  </div>
 
   <div class="ai-box" id="aiBox" hidden><p id="aiText"></p></div>
 
@@ -104,11 +130,16 @@
     <button id="restartBtn">やり直し</button>
     <button id="nextBtn">次へ →</button>
   </div>
+  <form id="questionForm" class="question">
+    <input type="text" id="questionInput" autocomplete="off" placeholder="❓ わからないことを質問（例: sorted って何？）">
+    <button type="submit">聞く</button>
+  </form>
+
   <div class="watch" id="watch"></div>
   <ul class="log" id="log"></ul>
 
   <details>
-    <summary>AI の設定・読み上げ</summary>
+    <summary>設定（AI・学習モード・読み上げ）</summary>
     <div class="fields">
       <label><input type="radio" name="provider" id="providerOff"> 使わない</label>
       <label><input type="radio" name="provider" id="providerBuiltin"> Chrome 内蔵AI（おすすめ・端末内）</label>
@@ -120,6 +151,7 @@
       <label>モデル <input type="text" id="geminiModel" spellcheck="false" placeholder="gemini-3.8-flash"></label>
       <div class="row"><button id="aiSave">保存</button><button id="aiTest">接続テスト</button></div>
       <small id="aiResult"></small>
+      <label><input type="checkbox" id="learnOn" checked> 🎓 学習モード（コードの答えの前に、ヒントで考える時間をとる）</label>
       <label><input type="checkbox" id="voiceOn" checked> 案内を読み上げる</label>
     </div>
   </details>

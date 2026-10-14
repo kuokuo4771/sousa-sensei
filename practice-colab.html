@@ -67,7 +67,7 @@
 </div>
 
 <main id="cells">
-  <div class="cell"><div class="text-cell"><h2>はじめての Python</h2>下のセルの ▶ を押すと、プログラムを実行できます。</div></div>
+  <div class="cell text" aria-label="セル 0: テキストセル: はじめての Python"><div class="text-cell"><h2>はじめての Python</h2>下のセルの ▶ を押すと、プログラムを実行できます。</div></div>
 </main>
 
 <dialog id="runtimeDialog">
@@ -96,8 +96,10 @@ let accel = "CPU";
 
 function addCodeCell(code = "") {
   const cell = document.createElement("div");
-  cell.className = "cell";
-  cell.innerHTML = `<run-button></run-button><textarea aria-label="コードセル" spellcheck="false" placeholder="ここにコードを入力"></textarea><div class="output"></div>`;
+  // 本物の Colab と同じく、セルには「セル 番号: コードセル」という名前があり、入力欄はエディターの枠（.lazy-editor）の中にある
+  cell.className = "cell code";
+  cell.setAttribute("aria-label", `セル ${cells.children.length}: コードセル: `);
+  cell.innerHTML = `<run-button></run-button><div class="editor lazy-editor"><textarea aria-label="Editor content" spellcheck="false" placeholder="ここにコードを入力"></textarea></div><div class="output"></div>`;
   cell.querySelector("textarea").value = code;
   cell.addEventListener("run", () => runCell(cell));
   cells.append(cell);
@@ -107,7 +109,8 @@ function addCodeCell(code = "") {
 
 function addTextCell() {
   const cell = document.createElement("div");
-  cell.className = "cell";
+  cell.className = "cell text";
+  cell.setAttribute("aria-label", `セル ${cells.children.length}: テキストセル: `);
   cell.innerHTML = `<div class="text-cell" contenteditable="true" aria-label="テキストセル">ここに説明を書きます</div>`;
   cells.append(cell);
 }

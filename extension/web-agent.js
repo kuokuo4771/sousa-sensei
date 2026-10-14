@@ -1,8 +1,4 @@
-  const EDITOR = ".monaco-editor, .cm-editor, .CodeMirror";
-  const TEXT_INPUT = "textarea, [contenteditable], [role=textbox], .native-edit-context";
-  function shownEl(el) {
-    return (el.matches(TEXT_INPUT) && el.closest(EDITOR)) || el;
-  }// スライド先生 Web 連携: つないだ Web アプリのタブの中で動く読み取り係
+// スライド先生 Web 連携: つないだ Web アプリのタブの中で動く読み取り係
 // - 押せる部品（ボタン・メニュー・タブ・入力欄など）の名前と位置を集める（items）
 // - ページの上に直接ハイライトを描く（highlight / clear）
 // - 利用者が操作したあと、ページが落ち着いたら「変わった」と知らせる
@@ -19,7 +15,7 @@
     "[role=button]", "[role=tab]", "[role=menuitem]", "[role=menuitemcheckbox]", "[role=menuitemradio]",
     "[role=link]", "[role=checkbox]", "[role=radio]", "[role=option]", "[role=treeitem]", "[role=switch]",
     "[role=combobox]", "[role=textbox]", "[contenteditable=true]",
-    "[aria-label]", "[title]", "[data-tooltip]",
+    "[aria-label]", "[title]", "[data-tooltip]", ".lazy-editor",
   ].join(",");
 
   // ─── 部品を集める ───────────────────────────────
@@ -53,20 +49,53 @@
   }
   const parentOf = (el) => el.parentElement || el.getRootNode().host || null;
 
-  // コードの入力欄（Monaco・CodeMirror）は、本当の入力部品が見えない小さな部品なので、エディター全体を指す
-  const EDITOR = ".monaco-editor, .cm-editor, .CodeMirror";
+  // コードの入力欄は「エディター全体」を1つの部品として扱う。
+  // - 本当の入力部品は見えない部品で、範囲もおかしい（Colab の Monaco では幅が 8 万 px を超える）
+  // - Colab は、クリックするまでセルにエディターを作らない（コードを表示しているだけ。.lazy-editor）。
+  //   これも部品として数えないと、2つ目以降のセルを番号札で指せない
+  const EDITOR = ".lazy-editor, .monaco-editor, .cm-editor, .CodeMirror";
   const TEXT_INPUT = "textarea, [contenteditable], [role=textbox], .native-edit-context";
+  function editorOf(el) {
+    if (!el.matches(EDITOR) && !el.matches(TEXT_INPUT)) return null;
+    return el.closest(".lazy-editor") || el.closest(EDITOR);   // Colab はエディターを .lazy-editor の中に作る
+  }
   function shownEl(el) {
-    return (el.matches(TEXT_INPUT) && el.closest(EDITOR)) || el;
+    return editorOf(el) || el;
+  }
+
+  // ノートブックのセル（Colab の「セル 3: コードセル」など）。ウェブ部品の外側までたどる
+  function cellOf(el) {
+    for (let p = el; p; p = parentOf(p)) {
+      if (p.classList?.contains("cell") && p.getAttribute("aria-label")) return p;
+    }
+    return null;
+  }
+  // 「セル 3」の部分。どのセルの部品かを名前に添えて、AI がセルを取り違えないようにする
+  function cellName(el) {
+    const m = cellOf(el)?.getAttribute("aria-label").match(/^(セル|Cell)\s*\d+/i);
+    return m ? m[0] : "";
+  }
+
+  function editorLabel(box) {
+    // 表示されているコード（Monaco・Colab の表示用）。素の入力欄（textarea）なら入っている値
+    const shown = (box.innerText || "").trim() || box.querySelector("textarea")?.value || "";
+    const first = shown.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+    const code = first ? (first.length > 24 ? `${first.slice(0, 24)}…` : first) : "空";
+    const cell = cellName(box);
+    return `コードの入力欄（${cell ? `${cell}: ` : ""}${code}）`;
   }
 
   function labelOf(el) {
+    const box = editorOf(el);
+    if (box) return editorLabel(box);
     const raw = el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("data-tooltip")
       || (el.innerText || "").trim() || el.getAttribute("placeholder") || (el.type === "button" || el.type === "submit" ? el.value : "")
       || "";
-    const text = raw.replace(/\s+/g, " ").trim();
-    if (/^editor content/i.test(text) || el !== shownEl(el)) return "コードの入力欄";
-    return text.slice(0, 40);
+    const text = raw.replace(/\s+/g, " ").trim().slice(0, 40);
+    if (!text || /^editor content/i.test(text)) return "";
+    // セルの中の部品（「セルを実行」など）は、セルごとに同じ名前になるので、どのセルかを添える
+    const cell = cellName(el);
+    return cell && !text.startsWith(cell) ? `${text}（${cell}）` : text;
   }
 
   function visible(el, r) {

@@ -172,6 +172,14 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   「〜を入力してください」とだけ言って、中身を利用者に考えさせない（教えるのはあなたの役目）。
   初心者向けに短く分かりやすく。コードなら日本語の短いコメントを付ける。このとき say は
   「下のコードをコードセルに貼り付けてください」のように、中身は input_text にあると伝える。入力のない一手なら空文字`;
+  // 操作を「させる」だけでなく「教える」ための指示（なぜそうするのか・結果の読み方・ヒント）
+  const TEACH_RULE = `- teach: その一手で学べること・なぜそうするのかを、初心者向けに1〜2文で
+  （例:「セルはコードを書いて実行する箱です。▶ を押すと、すぐ下に結果が出ます」）。
+  直前の手順でコードを実行して結果やエラーが出ていれば、その読み方・意味も説明する。done なら、全体で学んだことのまとめ
+- hint: input_text があるとき、答えを見せずに自分で考えるためのヒントを1文
+  （例:「並べ替えには sorted() という関数が使えます」）。input_text がなければ空文字`;
+  const TEACHER = `あなたは初心者に教える、やさしい先生です。操作をさせるだけでなく、なぜそうするのかも伝えます。
+コードを書く目標では、数行ずつ書いて実行し、結果を確かめながら進めます（長いコードを一度に出さない）。`;
   // 「[30]の「セルを実行」」のような番号札の番号は、利用者には意味がないので消す
   const dropTagNumbers = (s) => s.replace(/\s*[\[［]\d+[\]］]\s*の?/g, "").trim();
 
@@ -189,9 +197,11 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
       target_text: { type: "string" },
       box: { type: "array", items: { type: "number" } },
       input_text: { type: "string" },
+      teach: { type: "string" },
+      hint: { type: "string" },
       reason: { type: "string" },
     },
-    required: ["current_done", "status", "say", "target_id", "target_text", "input_text", "reason"],
+    required: ["current_done", "status", "say", "target_id", "target_text", "input_text", "teach", "hint", "reason"],
   };
 
   // AI が答えた [ymin, xmin, ymax, xmax]（0〜1000）を、画面に対する割合の枠にする。おかしな値なら null
@@ -205,7 +215,8 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   //      appeared / disappeared（その間に新しく現れた・消えた文字）, app（共有中のウインドウ名）, goal（やりたいこと）,
   //      done（終わった手順の配列）, current（いま案内中の手順。なければ null）, items（番号札 [{ id, text, x0..y1 }]） }
   // 返り値: { currentDone: true | false | null, status: "next" | "done" | "unsure",
-  //          say, targetId（なければ null）, targetText, box, inputText（入力する中身。なければ空文字）, reason }
+  //          say, targetId（なければ null）, targetText, box, inputText（入力する中身。なければ空文字）,
+  //          teach（その一手で学べること）, hint（答えを見る前のヒント）, reason }
   async function coach(c) {
     const list = c.items.map((it) =>
       `[${it.id}] ${it.text} (${Math.round(((it.x0 + it.x1) / 2) * 100)}%, ${Math.round(((it.y0 + it.y1) / 2) * 100)}%)`).join("\n");
@@ -238,12 +249,14 @@ ${list || "（文字が見つかりませんでした）"}
 - say: 次にやる一手を1文で（例:「上の『挿入』タブをクリックしてください」）。
   案内中の手順がまだなら、その手順のやり方を言い直す。done なら完了のひとこと
 ${INPUT_RULE}
+${TEACH_RULE}
 - target_id: その一手で操作する場所の番号札の番号（一覧から1つ）。
   番号札のない場所（アイコンだけのボタン、図形、スライドの中など）なら 0
 - target_text: target_id の番号札に書かれている文字を一覧のとおりに（番号の読み違いを確かめるため）。0 なら空文字
 - box: target_id が 0 のとき、その場所の範囲 [ymin, xmin, ymax, xmax]（${nowName}の左上を0、右下を1000）。分からなければ空の配列
 - reason: そう判断した理由を短く
 ルール: 一度に1つの操作だけ。メニュー名やボタン名を推測で作らない。
+${TEACHER}
 「これまでに終わった手順」と同じ手順をくり返させない（同じ手順に戻りそうなら、やりたいことがもう達成できているかを考え直す）。
 say に番号札の番号（[12] など）は書かない。`;
     const r = await ask(text, images, COACH_SCHEMA);
@@ -256,6 +269,8 @@ say に番号札の番号（[12] など）は書かない。`;
       targetText: str(r.target_text, 40),
       box: toBox(r.box),
       inputText: block(r.input_text),
+      teach: str(r.teach, 300),
+      hint: str(r.hint, 200),
       reason: str(r.reason),
     };
   }
@@ -272,9 +287,11 @@ say に番号札の番号（[12] など）は書かない。`;
       path: { type: "array", items: { type: "string" } },
       doc_target: { type: "string" },
       input_text: { type: "string" },
+      teach: { type: "string" },
+      hint: { type: "string" },
       reason: { type: "string" },
     },
-    required: ["current_done", "status", "say", "path", "doc_target", "input_text", "reason"],
+    required: ["current_done", "status", "say", "path", "doc_target", "input_text", "teach", "hint", "reason"],
   };
 
   // c: { host（"Excel" | "Word" | "PowerPoint"）, goal, done, current, before（指示を出したときの状態の文章。なければ null）,
@@ -299,8 +316,10 @@ ${c.now}
 - path: その一手で押すリボンの道順を、画面の表記のまま順番に（例: ["ホーム", "罫線", "格子"]）。リボンを使わない操作なら空の配列
 - doc_target: その一手で操作する文書の中の場所。${c.targetKind}。なければ空文字
 ${INPUT_RULE}
+${TEACH_RULE}
 - reason: そう判断した理由を短く
-ルール: 一度に1つの操作だけ。Mac の ${c.host} にないボタン名を作らない。`;
+ルール: 一度に1つの操作だけ。Mac の ${c.host} にないボタン名を作らない。
+${TEACHER}`;
     const r = await ask(text, [], OFFICE_SCHEMA);
     return {
       currentDone: { yes: true, no: false }[r.current_done] ?? null,
@@ -309,8 +328,51 @@ ${INPUT_RULE}
       path: Array.isArray(r.path) ? r.path.map((p) => str(p, 20)).filter(Boolean).slice(0, 5) : [],
       docTarget: str(r.doc_target, 60),
       inputText: block(r.input_text),
+      teach: str(r.teach, 300),
+      hint: str(r.hint, 200),
       reason: str(r.reason),
     };
+  }
+
+  // ─── 学ぶための補助 ─────────────────────────────
+  // コードを1行ずつ説明する。返り値: [{ code, explain }]
+  async function explainCode({ code, goal }) {
+    const text = `${TEACHER}
+次のコードを、プログラミングを始めたばかりの人に1行ずつ説明してください。
+やりたいこと: ${goal}
+コード:
+${code}
+
+JSON で答えてください。lines: 行ごとの { code（その行をそのまま。空行やコメントだけの行は省く）, explain（何をしているかを1文で） }`;
+    const r = await ask(text, [], {
+      type: "object",
+      properties: {
+        lines: { type: "array", items: { type: "object", properties: { code: { type: "string" }, explain: { type: "string" } }, required: ["code", "explain"] } },
+      },
+      required: ["lines"],
+    });
+    return (Array.isArray(r.lines) ? r.lines : [])
+      .map((l) => ({ code: block(l?.code, 200), explain: str(l?.explain, 200) }))
+      .filter((l) => l.code && l.explain)
+      .slice(0, 40);
+  }
+
+  // 利用者の質問に、いまの画面と案内の流れをふまえて答える。返り値: 答えの文章
+  // c: { question, goal, done, current, app, image（いまの画面。なければ null） }
+  async function answerQuestion(c) {
+    const text = `${TEACHER}
+利用者から質問がありました。いまの画面（画像）と、案内の流れをふまえて、初心者にも分かるように答えてください。
+アプリ: ${c.app || "不明"}
+やりたいこと: ${c.goal || "（まだ決まっていない）"}
+これまでに終わった手順: ${c.done?.join(" / ") || "（なし）"}
+いま案内中の手順: ${c.current ?? "（なし）"}
+質問: ${c.question}
+
+JSON で答えてください。answer: 答え（3〜5文。必要なら短いコード例を入れてよい。専門用語には一言で説明を添える）`;
+    const r = await ask(text, c.image ? [c.image] : [], {
+      type: "object", properties: { answer: { type: "string" } }, required: ["answer"],
+    });
+    return block(r.answer, 1500);
   }
 
   // 接続テスト（画面の画像は送らない）
@@ -323,7 +385,7 @@ ${INPUT_RULE}
   return {
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
-    coach, coachOffice, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
+    coach, coachOffice, explainCode, answerQuestion, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
     DEFAULT_GEMINI_MODEL, normalizeModel,
   };
 })();

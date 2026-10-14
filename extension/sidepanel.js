@@ -29,13 +29,20 @@ const ui = Object.fromEntries([
   "pageName", "notice", "goalForm", "goalInput", "stepCard", "stepNum", "stepText", "inputBox", "inputText", "copyBtn", "doneCard", "aiBox", "aiText",
   "confirmBox", "confirmText", "yesBtn", "notYetBtn", "loopBox", "finishBtn", "continueBtn", "askBtn", "restartBtn", "nextBtn", "watch", "log", "aiState",
   "providerOff", "providerBuiltin", "providerGemini", "builtinState", "builtinPrepare", "geminiKey", "geminiModel",
-  "aiSave", "aiTest", "aiResult", "voiceOn",
+  "aiSave", "aiTest", "aiResult", "voiceOn", "learnOn",
+  "teachBox", "teachText", "thinkBox", "hintText", "revealBtn", "answerBox", "explainBtn", "explainList",
+  "doneSummary", "learnedBox", "learnedList", "questionForm", "questionInput",
 ].map((id) => [id, $(id)]));
 
 const run = {
   tab: null,                // 案内しているタブ { id, windowId, title, url }
   goal: "", done: [], current: null, before: null, finished: false,
   input: "",                // いまの手順で入力する中身（コードなど。AI が書いたもの）
+  teach: "",                // いまの手順で学べること（💡 ポイント）
+  hint: "",                 // 答えを見る前のヒント
+  revealed: false,          // 学習モードで「答えを見る」を押したか
+  learned: [],              // これまでのポイント（完了したときに「学んだこと」として見せる）
+  summary: "",              // 完了したときの AI のまとめ
   busy: false, again: false, retry: 0, lastChangeAt: 0, stuckShown: false,
   loopAsked: new Set(),     // 「くり返されています」をもう聞いた手順
 };
@@ -47,8 +54,18 @@ function render() {
   ui.stepCard.hidden = run.finished || !run.goal;
   ui.stepNum.textContent = `STEP ${run.done.length + 1}`;
   ui.stepText.textContent = run.current ?? "🧭 AI がページを見て、最初の一手を考えています…";
+  ui.teachBox.hidden = !run.current || !run.teach;
+  ui.teachText.textContent = run.teach;
+  // 学習モードでは、コードの答えの前にヒントを出して、自分で考える時間をとる
   ui.inputBox.hidden = run.finished || !run.current || !run.input;
+  const thinking = ui.learnOn.checked && !run.revealed;
+  ui.thinkBox.hidden = !thinking;
+  ui.answerBox.hidden = ui.copyBtn.hidden = thinking;
+  ui.hintText.textContent = run.hint ? `ヒント: ${run.hint}` : "";
   ui.inputText.textContent = run.input;
+  ui.doneSummary.textContent = run.summary || "やりたいことは完了です。";
+  ui.learnedBox.hidden = !run.learned.length;
+  ui.learnedList.replaceChildren(...run.learned.map((t) => Object.assign(document.createElement("li"), { textContent: t })));
   ui.aiState.textContent = `AI: ${AI.label()}`;
 }
 function setWatch(text) { ui.watch.textContent = text; }
@@ -156,7 +173,10 @@ async function startGoal(goal) {
     return;
   }
   if (!(await attach())) return;
-  Object.assign(run, { goal, done: [], current: null, before: null, finished: false, input: "", stuckShown: false, loopAsked: new Set() });
+  Object.assign(run, {
+    goal, done: [], current: null, before: null, finished: false, input: "", teach: "", hint: "", revealed: false,
+    learned: [], summary: "", stuckShown: false, loopAsked: new Set(),
+  });
   ui.aiBox.hidden = ui.loopBox.hidden = true;
   ui.confirmBox.hidden = true;
   addLog(`🧭 開始: ${goal}`);
@@ -196,18 +216,19 @@ async function ask() {
 function apply(r, items, snapshot) {
   let cheer = false;
   if (run.current && r.currentDone === true) {
-    run.done.push(run.current);
-    addLog(`✓ ${run.current}`);
-    run.current = null;
+    completeStep();
     cheer = true;
-    flash();
   }
   if (!run.current && r.status === "done") {
-    finish();
+    finish(r.teach || r.say);
     return;
   }
   if (!run.current && r.status === "next" && r.say) {
-    Object.assign(run, { current: r.say, input: r.inputText ?? "", before: snapshot, lastChangeAt: Date.now(), stuckShown: false });
+    Object.assign(run, {
+      current: r.say, input: r.inputText ?? "", teach: r.teach ?? "", hint: r.hint ?? "", revealed: false,
+      before: snapshot, lastChangeAt: Date.now(), stuckShown: false,
+    });
+    ui.explainList.hidden = true;
     ui.confirmBox.hidden = true;
     ui.aiBox.hidden = ui.loopBox.hidden = true;
     // 終わった手順と同じ手順がまた出たら、AI が堂々めぐりしているかもしれないので、もう達成できたか聞く（1手順に1回）
@@ -237,8 +258,18 @@ function apply(r, items, snapshot) {
   }
 }
 
-function finish() {
+// いまの手順を終わりにする。その手順のポイントは「学んだこと」に残す
+function completeStep(manual = false) {
+  run.done.push(run.current);
+  if (run.teach && !run.learned.includes(run.teach)) run.learned.push(run.teach);
+  addLog(`✓ ${run.current}${manual ? "（手動）" : ""}`);
+  Object.assign(run, { current: null, input: "", teach: "", hint: "" });
+  flash();
+}
+
+function finish(summary = "") {
   run.finished = true;
+  run.summary = summary;
   ui.confirmBox.hidden = ui.aiBox.hidden = ui.loopBox.hidden = true;
   clearHighlight();
   render();
@@ -255,12 +286,7 @@ function stepKey(say) {
 // 「できた ✓」「次へ」: AI の判定を待たずに次の一手へ
 function manualDone() {
   ui.loopBox.hidden = true;
-  if (run.current) {
-    run.done.push(run.current);
-    addLog(`✓ ${run.current}（手動）`);
-    run.current = null;
-    flash();
-  }
+  if (run.current) completeStep(true);
   ui.confirmBox.hidden = true;
   ask();
 }
@@ -299,7 +325,7 @@ ui.goalForm.addEventListener("submit", (e) => {
 ui.yesBtn.addEventListener("click", manualDone);
 ui.nextBtn.addEventListener("click", manualDone);
 ui.notYetBtn.addEventListener("click", () => { ui.confirmBox.hidden = true; });
-ui.finishBtn.addEventListener("click", finish);
+ui.finishBtn.addEventListener("click", () => finish());
 // 入力する中身をコピーする（Colab のセルなどに貼り付けてもらう）
 ui.copyBtn.addEventListener("click", async () => {
   try {
@@ -318,6 +344,59 @@ ui.askBtn.addEventListener("click", async () => {
   if (await attach()) ask();
 });
 ui.restartBtn.addEventListener("click", () => { if (run.goal) startGoal(run.goal); });
+
+
+// ─── 学ぶための補助 ─────────────────────────────────
+// 学習モード（答えの前にヒント）は、このパネルを開き直しても続くように覚えておく
+try { ui.learnOn.checked = localStorage.getItem("slideSenseiLearn") !== "off"; } catch { /* 覚えられない環境では ON のまま */ }
+ui.learnOn.addEventListener("change", () => {
+  try { localStorage.setItem("slideSenseiLearn", ui.learnOn.checked ? "on" : "off"); } catch { /* 覚えられなくても動く */ }
+  render();
+});
+ui.revealBtn.addEventListener("click", () => { run.revealed = true; render(); });
+
+// 「🔍 1行ずつ説明」: いまのコードを、1行ずつ AI に説明してもらう
+ui.explainBtn.addEventListener("click", async () => {
+  if (!run.input) return;
+  ui.explainBtn.disabled = true;
+  ui.explainBtn.textContent = "🔍 説明を考えています…";
+  try {
+    const lines = await AI.explainCode({ code: run.input, goal: run.goal });
+    ui.explainList.replaceChildren(...lines.map((l) => {
+      const li = document.createElement("li");
+      li.append(Object.assign(document.createElement("code"), { textContent: l.code }), l.explain);
+      return li;
+    }));
+    ui.explainList.hidden = !lines.length;
+    if (!lines.length) showAi("説明を作れませんでした。もう一度押してみてください。", true);
+  } catch (e) {
+    showAi(`説明を作れませんでした: ${e.message}`, true);
+  } finally {
+    ui.explainBtn.disabled = false;
+    ui.explainBtn.textContent = "🔍 1行ずつ説明";
+  }
+});
+
+// 「❓ 質問」: いつでも、いまのページを見せながら AI に質問できる
+ui.questionForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = ui.questionInput.value.trim();
+  if (!question) return;
+  if (!AI.enabled()) { showAi("AI が OFF です。下の「設定」で AI を選んでください。", true); return; }
+  showAi(`❓ ${question}\n💬 考えています…`);
+  try {
+    let image = null, app = "";
+    if (run.tab || (await attach())) {
+      const obs = await observe().catch(() => null);
+      if (obs) { image = tagImage({ source: obs.shot, width: obs.shot.width, height: obs.shot.height }, []).plain; app = obs.app; }
+    }
+    const answer = await AI.answerQuestion({ question, goal: run.goal, done: run.done, current: run.current, app, image });
+    showAi(`❓ ${question}\n💬 ${answer || "うまく答えられませんでした。聞き方を変えてみてください。"}`);
+    ui.questionInput.value = "";
+  } catch (err) {
+    showAi(`質問に答えられませんでした: ${err.message}`, true);
+  }
+});
 
 // ─── AI の設定 ───────────────────────────────────────
 async function renderAi() {
