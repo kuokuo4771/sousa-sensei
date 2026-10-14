@@ -10,7 +10,7 @@
   "side_panel": { "default_path": "sidepanel.html" },
   "content_scripts": [
     {
-      "matches": ["file:///*/index.html*", "file:///*/slide-sensei*.html*", "https://*.github.io/*"],
+      "matches": ["file:///*/index.html*", "file:///*/slide-sensei*.html*"],
       "js": ["hub-bridge.js"],
       "run_at": "document_start"
     }

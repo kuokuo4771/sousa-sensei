@@ -21,7 +21,7 @@ const AI = (() => {
   const SYSTEM = `あなたは「スライド先生」の AI 先生です。パソコンのソフト（PowerPoint に限らず、Excel・Word・
 Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、画面を見ながら次の一手を1つずつ教えます。
 - 答えは必ず指定された JSON だけで返す
-- 説明はやさしい日本語で短く（1文）
+- やさしい日本語で短く（長さは、それぞれの項目の指示に従う）
 - 画面上の場所を指すときは、画像に付いた赤い番号札の番号で答える
 - ボタンやメニューの名前は画面の表記のまま書き、画面にない名前を推測で作らない
 - 分からないときは推測で断言しない`;
@@ -51,16 +51,23 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   }
 
   // ─── 呼び出し回数の制限 ────────────────────────
+  // 4秒に1回までは、エラーにせず順番を待つ（「1行ずつ説明」を案内の直後に押しても失敗しないように）。
+  // 1分間の上限に達したときだけエラーにする。同時に呼ばれても順番に並べる（gate）
   const calls = [];   // 直近1分の呼び出し時刻
-  function rateCheck() {
-    const now = Date.now();
-    while (calls.length && now - calls[0] > 60_000) calls.shift();
-    if (calls.length && now - calls[calls.length - 1] < MIN_INTERVAL_MS) {
-      return "少し間をあけてからもう一度どうぞ（AI の呼び出しは4秒に1回まで）";
-    }
-    if (calls.length >= MAX_PER_MINUTE) return `AI の呼び出しが1分間の上限（${MAX_PER_MINUTE}回）に達しました`;
-    calls.push(now);
-    return null;
+  let gate = Promise.resolve();
+  function reserve() {
+    const turn = gate.then(async () => {
+      const now = Date.now();
+      while (calls.length && now - calls[0] > 60_000) calls.shift();
+      if (calls.length >= MAX_PER_MINUTE) {
+        throw new Error(`AI の呼び出しが1分間の上限（${MAX_PER_MINUTE}回）に達しました。少し待ってからどうぞ`);
+      }
+      const wait = calls.length ? MIN_INTERVAL_MS - (now - calls[calls.length - 1]) : 0;
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      calls.push(Date.now());
+    });
+    gate = turn.catch(() => {});
+    return turn;
   }
   function usage() {
     const now = Date.now();
@@ -69,6 +76,7 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   // 自動テスト用: 呼び出し回数の記録と、内蔵AIの準備済みセッションを消す
   function resetForTest() {
     calls.length = 0;
+    gate = Promise.resolve();
     builtinBase = null;
   }
 
@@ -81,13 +89,13 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   }
 
   // モデルの取り込みが必要なときはボタンを押した直後に呼ぶこと（ブラウザの制限）
+  // 同時に呼ばれても1つだけ作る（作っている途中の約束を覚えておく。失敗したら次に作り直す）
   async function prepareBuiltin(onProgress) {
-    if (builtinBase) return builtinBase;
-    builtinBase = await LanguageModel.create({
+    builtinBase ??= LanguageModel.create({
       ...BUILTIN_OPTIONS,
       initialPrompts: [{ role: "system", content: SYSTEM }],
       monitor(m) { m.addEventListener("downloadprogress", (e) => onProgress?.(e.loaded)); },
-    });
+    }).catch((e) => { builtinBase = null; throw e; });
     return builtinBase;
   }
 
@@ -135,34 +143,56 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   // images: 一緒に渡す画像（キャンバス）の配列。文中で「画像1」「画像2」と順番どおりに呼ぶ
   async function ask(text, images, schema) {
     if (!enabled()) throw new Error("AI が OFF です。「🤖 AI」から設定してください");
-    const limited = rateCheck();
-    if (limited) throw new Error(limited);
+    await reserve();
     const raw = settings.provider === "builtin"
       ? await askBuiltin(text, images, schema)
       : await askGemini(`${text}\n\n次の JSON スキーマに合う JSON だけを返してください:\n${JSON.stringify(schema)}`, images);
     return parseJson(raw);
   }
 
-  // JSON だけを返すよう頼んでも ```json で囲まれることがあるので取り出す
+  // JSON だけを返すよう頼んでも ```json で囲まれることがあるので取り出す。答えは必ずオブジェクト（{…}）
   function parseJson(raw) {
     const s = String(raw).trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/, "");
-    try { return JSON.parse(s); } catch { /* 下で直して再挑戦 */ }
-    const m = s.match(/\{[\s\S]*\}/);
-    if (m) {
-      try { return JSON.parse(m[0]); } catch { /* 下で直して再挑戦 */ }
-      try { return JSON.parse(repairJson(m[0])); } catch { /* 読めなかった */ }
+    const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+    for (const candidate of [s, s.match(/\{[\s\S]*\}/)?.[0]]) {
+      if (!candidate) continue;
+      for (const text of [candidate, repairJson(candidate)]) {
+        try {
+          const v = JSON.parse(text);
+          if (isObject(v)) return v;
+        } catch { /* 次の読み方を試す */ }
+      }
     }
     throw new Error("AI の答えを読み取れませんでした。「🤖 AIに聞く」でもう一度試してください");
   }
 
-  // AI がたまに書く、JSON として正しくない文字を直す
+  // AI がたまに書く、JSON として正しくない文字を直す（文字列の中だけを直す）
   // - 壊れた「\」（「\u30」のように4桁そろわない \u、Windows の「C:\Users」など）→ 「\」そのものとして読む
   //   （JSON.parse が「Bad Unicode escape」などで失敗する原因）
-  // - 文字列の中の生の改行・タブ → 空白
+  // - 文字列の中の生の改行・タブ → \n・\t（コードの改行や字下げを壊さない）
   function repairJson(s) {
-    return s
-      .replace(/\\(u[0-9a-fA-F]{4}|["\\/bfnrt])|\\/g, (all, ok) => (ok ? all : "\\\\"))
-      .replace(/[\u0000-\u001f]+/g, " ");
+    let out = "";
+    let inString = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (!inString) {
+        if (ch === '"') inString = true;
+        out += ch;
+      } else if (ch === "\\") {
+        const next = s[i + 1] ?? "";
+        if ('"\\/bfnrt'.includes(next) && next) { out += ch + next; i++; }
+        else if (next === "u" && /^[0-9a-fA-F]{4}$/.test(s.slice(i + 2, i + 6))) { out += s.slice(i, i + 6); i += 5; }
+        else out += "\\\\";
+      } else if (ch === '"') {
+        inString = false;
+        out += ch;
+      } else if (ch < " ") {
+        out += { "\n": "\\n", "\r": "\\r", "\t": "\\t" }[ch] ?? " ";
+      } else {
+        out += ch;
+      }
+    }
+    return out;
   }
 
   const str = (v, max = 200) => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -180,8 +210,9 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   （例:「並べ替えには sorted() という関数が使えます」）。input_text がなければ空文字`;
   const TEACHER = `あなたは初心者に教える、やさしい先生です。操作をさせるだけでなく、なぜそうするのかも伝えます。
 コードを書く目標では、数行ずつ書いて実行し、結果を確かめながら進めます（長いコードを一度に出さない）。`;
-  // 「[30]の「セルを実行」」のような番号札の番号は、利用者には意味がないので消す
-  const dropTagNumbers = (s) => s.replace(/\s*[\[［]\d+[\]］]\s*の?/g, "").trim();
+  // 「[30]の「セルを実行」」のような番号札の番号は、利用者には意味がないので消す。
+  // コードの「nums[0]」のような添字は消さない（直前が文の区切りや空白のときだけ番号札とみなす）
+  const dropTagNumbers = (s) => s.replace(/(^|[\s、。「『（(])[\[［]\d+[\]］]\s*の?/g, "$1").trim();
 
   // ─── 画面を見て次の一手を答える ─────────────────
   // 場所は「番号札（文字認識で見つけた画面上の文字）から選ぶ」形で答えさせる。

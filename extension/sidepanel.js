@@ -45,6 +45,7 @@ const run = {
   summary: "",              // 完了したときの AI のまとめ
   busy: false, again: false, retry: 0, lastChangeAt: 0, stuckShown: false,
   loopAsked: new Set(),     // 「くり返されています」をもう聞いた手順
+  lastHighlight: null,      // 最後に光らせた場所 { tabId, msg }（タブを行き来したときに光らせ直す）
 };
 
 // ─── 表示 ───────────────────────────────────────
@@ -118,8 +119,11 @@ async function attach() {
     render();
     return false;
   }
+  const back = run.tab?.id !== tab.id;
   run.tab = { id: tab.id, windowId: tab.windowId, title: tab.title, url: tab.url };
   ui.notice.hidden = true;
+  // 別のタブから戻ってきたら、案内中の場所をもう一度光らせる（離れるときに消しているため）
+  if (back && run.current && run.lastHighlight?.tabId === tab.id) tabApi.send(tab.id, run.lastHighlight.msg).catch(() => {});
   render();
   return true;
 }
@@ -138,7 +142,7 @@ async function observe() {
   run.tab.title = info.title;
   run.tab.url = info.url;
   const app = `Web ページ「${info.title}」（${info.url}）${info.focused ? `。入力中の場所: ${info.focused}` : ""}`;
-  return { items: info.items, shot, app };
+  return { items: info.items, gen: info.gen, shot, app };
 }
 
 function loadCanvas(dataUrl) {
@@ -156,20 +160,25 @@ function loadCanvas(dataUrl) {
   });
 }
 
-function highlight(r, items) {
+// gen: その番号札を集めた回（読み取り係は、回ごとに番号→部品を覚えている）
+function highlight(r, items, gen) {
   if (!run.tab) return;
   const it = resolveTarget(r, items);
-  if (it) tabApi.send(run.tab.id, { type: "highlight", id: it.id, label: it.text }).catch(() => {});
-  else if (r.box) tabApi.send(run.tab.id, { type: "highlight", box: r.box, label: "ここ（AI の推定）" }).catch(() => {});
+  const msg = it ? { type: "highlight", gen, id: it.id, label: it.text }
+    : r.box ? { type: "highlight", box: r.box, label: "ここ（AI の推定）" } : null;
+  if (!msg) return;
+  run.lastHighlight = { tabId: run.tab.id, msg };
+  tabApi.send(run.tab.id, msg).catch(() => {});
 }
 function clearHighlight() {
+  run.lastHighlight = null;
   if (run.tab) tabApi.send(run.tab.id, { type: "clear" }).catch(() => {});
 }
 
 // ─── 案内の流れ ─────────────────────────────────────
 async function startGoal(goal) {
   if (!AI.enabled()) {
-    showAi("AI が OFF です。下の「AI の設定」で AI を選んでください。", true);
+    showAi("AI が OFF です。下の「設定」で AI を選んでください。", true);
     return;
   }
   if (!(await attach())) return;
@@ -190,7 +199,7 @@ async function ask() {
   run.busy = true;
   setWatch("🧭 AI がページを見て考えています…");
   try {
-    const { items, shot, app } = await observe();
+    const { items, gen, shot, app } = await observe();
     const images = tagImage({ source: shot, width: shot.width, height: shot.height }, items);
     const before = run.current ? run.before : null;
     const { appeared, disappeared } = textChanges(before?.texts, items);
@@ -198,7 +207,7 @@ async function ask() {
       image: images.tagged, before: before?.image ?? null, appeared, disappeared, app, items,
       goal: run.goal, done: run.done, current: run.current,
     });
-    apply(r, items, { image: images.plain, texts: new Set(items.map((it) => norm(it.text))) });
+    apply(r, items, gen, { image: images.plain, texts: new Set(items.map((it) => norm(it.text))) });
   } catch (e) {
     if (/間をあけて|上限/.test(e.message)) {
       // 呼び出し回数の制限に当たったら、少し待ってやり直す（やり直しの予約は1つだけ）
@@ -213,7 +222,7 @@ async function ask() {
   }
 }
 
-function apply(r, items, snapshot) {
+function apply(r, items, gen, snapshot) {
   let cheer = false;
   if (run.current && r.currentDone === true) {
     completeStep();
@@ -239,14 +248,14 @@ function apply(r, items, snapshot) {
     }
     render();
     clearHighlight();
-    highlight(r, items);
+    highlight(r, items, gen);
     speak(`${cheer ? "できました。" : ""}${r.say}`);
     return;
   }
   if (run.current && r.currentDone === false && r.status !== "unsure") {
     showAi(`まだのようです。${r.say}`);
     if (r.inputText) { run.input = r.inputText; render(); }
-    highlight(r, items);
+    highlight(r, items, gen);
     showConfirm("AI は「まだ」と判断しました。できていれば「できた ✓」を押してください。");
     return;
   }

@@ -121,6 +121,8 @@ Chrome 拡張機能を使います。**Colab のページの横（Chrome のサ�
 
 `index.html` の **「🌐 Web アプリにつなぐ」** からつなぐこともできます（ミニ窓で案内し、レッスンも使える）。
 この場合は「ファイルの URL へのアクセスを許可する」を ON にして、`index.html` を再読み込みしてから使います。
+安全のため、拡張機能はスライド先生の本体のページ（ダブルクリックで開いた `index.html`）とだけやりとりします。
+GitHub Pages などで公開した本体から使うときは、`extension/manifest.json` の `content_scripts` の `matches` に、その URL（例: `https://ユーザー名.github.io/リポジトリ名/*`）を足してください。
 
 ---
 

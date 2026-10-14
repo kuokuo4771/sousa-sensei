@@ -21,7 +21,7 @@ const SidepanelTest = (() => {
     { id: 3, text: "セルを実行", x0: 0.05, y0: 0.30, x1: 0.08, y1: 0.34 },
     { id: 4, text: "コード", x0: 0.02, y0: 0.12, x1: 0.06, y1: 0.15 },
   ];
-  const page = { url: "https://colab.research.google.com/drive/abc", title: "練習.ipynb - Colab", items: ITEMS, agent: true };
+  const page = { url: "https://colab.research.google.com/drive/abc", title: "練習.ipynb - Colab", items: ITEMS, agent: true, gen: 0, tabId: 7 };
   const sent = [];       // 読み取り係に送った頼みごと
   let injected = 0;
   const listeners = { message: [], activated: [], updated: [] };
@@ -39,11 +39,11 @@ const SidepanelTest = (() => {
 
   window.chrome = {
     tabs: {
-      async query() { return [{ id: 7, windowId: 1, url: page.url, title: page.title, active: true }]; },
+      async query() { return [{ id: page.tabId, windowId: 1, url: page.url, title: page.title, active: true }]; },
       async sendMessage(tabId, msg) {
         if (!page.agent) throw new Error("Could not establish connection. Receiving end does not exist.");
         sent.push(msg);
-        if (msg.type === "items") return { items: page.items, title: page.title, url: page.url, focused: "" };
+        if (msg.type === "items") return { items: page.items, gen: ++page.gen, title: page.title, url: page.url, focused: "" };
         return { ok: true };
       },
       async captureVisibleTab() { return shot(); },
@@ -87,9 +87,10 @@ const SidepanelTest = (() => {
   function reset() {
     sent.length = answers.length = calls.length = 0;
     injected = 0;
-    Object.assign(page, { url: "https://colab.research.google.com/drive/abc", title: "練習.ipynb - Colab", items: ITEMS, agent: true });
+    Object.assign(page, { url: "https://colab.research.google.com/drive/abc", title: "練習.ipynb - Colab", items: ITEMS, agent: true, tabId: 7 });
     Object.assign(run, { goal: "", done: [], current: null, before: null, finished: false, busy: false, again: false, loopAsked: new Set(), learned: [], summary: "" });
     $("confirmBox").hidden = $("aiBox").hidden = $("loopBox").hidden = true;
+    run.lastHighlight = null;
   }
 
   const tests = [
@@ -100,6 +101,7 @@ const SidepanelTest = (() => {
       if (!$("stepText").textContent.includes("セルを実行")) return `表示が違います: ${$("stepText").textContent}`;
       if (!(await until(() => highlights().length))) return "ハイライトを頼んでいません";
       if (highlights()[0].id !== 3) return `違う場所を光らせました: ${JSON.stringify(highlights()[0])}`;
+      if (highlights()[0].gen !== page.gen) return "番号札を集めた回（gen）を伝えていません";
       if (calls[0].before !== null) return "最初の一手なのに「前の画面」を送っています";
       if (!calls[0].app.includes("Colab")) return `ページ名を AI に伝えていません: ${calls[0].app}`;
       if (!(calls[0].image instanceof HTMLCanvasElement) || calls[0].items.length !== 4) return "画面か番号札を AI に渡していません";
@@ -223,6 +225,21 @@ const SidepanelTest = (() => {
       $("questionForm").requestSubmit();
       if (!(await until(() => $("aiText").textContent.includes("並べ替えた結果")))) return `答えが出ません: ${$("aiText").textContent}`;
       if (asked?.question !== "sorted って何？" || !asked.image || asked.goal !== "ソートを学びたい") return "質問・画面・やりたいことを AI に渡していません";
+    }],
+    ["別のタブを見て戻ってきたら、案内中の場所を光らせ直す", async () => {
+      answers.push({ say: "「セルを実行」ボタンを押してください", targetId: 3, targetText: "セルを実行" });
+      await start("セルを実行したい");
+      if (!(await until(() => highlights().length))) return "最初に光らせていません";
+      const first = highlights()[0];
+      page.tabId = 8;                       // 別のタブへ
+      for (const f of listeners.activated) f({ tabId: 8 });
+      if (!(await until(() => run.tab?.id === 8))) return "別のタブに切り替わりません";
+      if (!sent.some((m) => m.type === "clear")) return "離れたタブのハイライトを消していません";
+      sent.length = 0;
+      page.tabId = 7;                       // 戻る
+      for (const f of listeners.activated) f({ tabId: 7 });
+      if (!(await until(() => highlights().length))) return "戻ってきても光らせ直していません";
+      if (highlights()[0].id !== first.id || highlights()[0].gen !== first.gen) return `違う場所を光らせ直しました: ${JSON.stringify(highlights()[0])}`;
     }],
     ["AI が OFF なら、設定を促す", async () => {
       const on = AI.enabled;

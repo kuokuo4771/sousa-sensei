@@ -170,7 +170,7 @@ function unionBox(boxes) {
 function targetFromAI(r, items, clear = false) {
   const it = resolveTarget(r, items);
   // Web アプリの部品は名前と位置が正確なので、部品まるごとを光らせる（webId でページの上にも直接出す）
-  if (it?.webId) state.target = { box: it, name: it.text, say: r.say, webId: it.webId };
+  if (it?.webId) state.target = { box: it, name: it.text, say: r.say, webId: it.webId, webGen: it.webGen };
   else if (it) state.target = { box: boxForText(it, r.targetText, items), name: r.targetText || it.text, say: r.say };
   else if (r.box) state.target = { box: r.box, name: "ここ（AI の推定）", say: r.say };
   else if (clear) state.target = null;

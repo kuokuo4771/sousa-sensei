@@ -99,6 +99,37 @@ print(sorted(nums))</pre></div></div>
       const r = overlayParts().box.getBoundingClientRect();
       if (r.right > innerWidth || r.width < 10) return `範囲がおかしい（${Math.round(r.left)}〜${Math.round(r.right)}px）`;
     }],
+    ["ダイアログ（トップレイヤー）の上にもハイライトを出す", async () => {
+      const host = fixture(`<dialog><p>ランタイムのタイプを変更</p><button aria-label="ダイアログの保存">保存</button></dialog>`);
+      host.querySelector("dialog").showModal();
+      try {
+        const { items, gen } = await ask({ type: "items" });
+        const it = find(items, "ダイアログの保存");
+        if (!it) return "ダイアログの中の部品がありません";
+        await ask({ type: "highlight", gen, id: it.id, label: "保存" });
+        await frame();
+        const overlay = overlayParts().box.parentElement;
+        // トップレイヤーは後から入れたものが手前。光らせたとき（ダイアログが開いたあと）に入れ直している
+        if (overlay.showPopover && !overlay.matches(":popover-open")) return "ハイライトがトップレイヤーに出ていません（ダイアログの裏に隠れる）";
+        const box = overlayParts().box.getBoundingClientRect();
+        if (box.width < 10 || overlayParts().box.hidden) return "ハイライトの枠が出ていません";
+      } finally {
+        host.querySelector("dialog").close();
+      }
+    }],
+    ["AI が考えている間に部品を集め直しても、そのときの番号の部品を光らせる", async () => {
+      fixture(`<button aria-label="あとから現れるボタン" hidden id="late" style="position:fixed;left:10px;top:150px">後</button>
+        <button aria-label="ねらいのボタン" style="position:fixed;left:200px;top:160px">ね</button>`);
+      const first = await ask({ type: "items" });
+      const want = find(first.items, "ねらいのボタン");
+      document.getElementById("late").hidden = false;   // 番号がずれる（上・左にある部品が増える）
+      const second = await ask({ type: "items" });
+      if (find(second.items, "ねらいのボタン").id === want.id) return "番号がずれず、確かめになっていません";
+      await ask({ type: "highlight", gen: first.gen, id: want.id, label: "ねらい" });
+      await frame();
+      const r = overlayParts().box.getBoundingClientRect();
+      if (Math.abs(r.left + 4 - 200) > 3) return `別の部品を光らせました（左端 ${Math.round(r.left)}px）`;
+    }],
     ["操作のあと、ページが落ち着いてから「変わった」と知らせる", async () => {
       events.length = 0;
       document.body.click();

@@ -9,7 +9,9 @@
 
   const MAX_ITEMS = 150;
   const SETTLE_MS = 700;        // 操作のあと、ページの変化がこれだけ止まったら「変わった」と知らせる
+  const TYPING_SETTLE_MS = 2500; // 文字の入力中は、手が止まってから長めに待つ（1文字ごとに AI を呼ばないため）
   const AFTER_INPUT_MS = 3000;  // 操作からこの時間内のページの変化だけを数える（勝手に動く表示を無視するため）
+  const KEEP_GENERATIONS = 4;   // 何回前までに集めた部品の番号を覚えておくか
   const PICK = [
     "button", "a[href]", "input", "select", "textarea", "summary", "label",
     "[role=button]", "[role=tab]", "[role=menuitem]", "[role=menuitemcheckbox]", "[role=menuitemradio]",
@@ -19,7 +21,10 @@
   ].join(",");
 
   // ─── 部品を集める ───────────────────────────────
-  let byId = new Map();
+  // 部品の番号は集めるたびに付け直すので、集めた回（gen）ごとに番号→部品を覚えておく。
+  // 光らせるときは、その番号を付けた回の表を使う（AI が考えている間に、質問などで別の回が集められても取り違えない）
+  let gen = 0;
+  const generations = new Map();   // gen → Map(番号 → 部品)
 
   function deepCandidates(root, out) {
     for (const el of root.querySelectorAll("*")) {
@@ -109,7 +114,10 @@
     const seen = new Set();
     const items = [];
     const clips = new Map();
-    byId = new Map();
+    const byId = new Map();
+    gen++;
+    generations.set(gen, byId);
+    for (const old of generations.keys()) if (old <= gen - KEEP_GENERATIONS) generations.delete(old);
     for (const el of deepCandidates(document, [])) {
       if (overlay.contains(el)) continue;
       const label = labelOf(el);
@@ -137,8 +145,20 @@
   }
 
   // ─── ページの上のハイライト ─────────────────────────
+  // ページの一番手前（トップレイヤー）に出す。Colab のダイアログ（「ランタイムのタイプを変更」など）も
+  // トップレイヤーに開くので、z-index をいくら大きくしても、ふつうの要素ではその裏に隠れてしまう
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483647;";
+  overlay.setAttribute("popover", "manual");
+  overlay.style.cssText = "position:fixed;inset:0;width:auto;height:auto;margin:0;padding:0;border:0;background:transparent;"
+    + "overflow:visible;pointer-events:none;z-index:2147483647;";
+  // あとから開いたダイアログより手前に来るよう、光らせるたびにトップレイヤーに入れ直す
+  function bringToFront() {
+    if (!overlay.showPopover) return;   // ポップオーバーに対応していないブラウザでは、ふつうの最前面のまま
+    try {
+      if (overlay.matches(":popover-open")) overlay.hidePopover();
+      overlay.showPopover();
+    } catch { /* 表示できなくても、ふつうの最前面で描く */ }
+  }
   overlay.innerHTML = `
     <style>
       @keyframes sensei-pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(224,103,78,.35); } 50% { box-shadow: 0 0 0 9px rgba(224,103,78,.15); } }
@@ -155,6 +175,7 @@
   let target = null;   // { el } または { box: {x0,y0,x1,y1} }
   let label = "";
   let raf = 0;
+  let placed = "";     // 最後に描いた位置（変わらないときは書き換えない。ページの変化の見張りを無駄に起こさないため）
 
   function place() {
     if (!target) return;
@@ -171,18 +192,24 @@
     const left = Math.max(r.left - pad, 2), top = Math.max(r.top - pad, 2);
     const right = Math.min(r.right + pad, innerWidth - 2), bottom = Math.min(r.bottom + pad, innerHeight - 2);
     const shown = right - left > 6 && bottom - top > 6;
-    box.hidden = tag.hidden = !shown;
-    if (shown) {
-      Object.assign(box.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px` });
-      const tagLeft = Math.max(4, Math.min(left, innerWidth - tag.offsetWidth - 4));
-      Object.assign(tag.style, { left: `${tagLeft}px`, top: `${Math.max(top, 26)}px` });
+    const key = shown ? [left, top, right, bottom, innerWidth].map(Math.round).join(",") : "hidden";
+    if (key !== placed) {
+      placed = key;
+      box.hidden = tag.hidden = !shown;
+      if (shown) {
+        Object.assign(box.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px` });
+        const tagLeft = Math.max(4, Math.min(left, innerWidth - tag.offsetWidth - 4));
+        Object.assign(tag.style, { left: `${tagLeft}px`, top: `${Math.max(top, 26)}px` });
+      }
     }
     raf = requestAnimationFrame(place);   // スクロールや画面の動きについていく
   }
 
+  // msg: { gen（どの回に集めた番号か。古い頼みごとでは無いこともある）, id（部品の番号）, box（番号がないときの範囲）, label }
   function highlight(msg) {
     clear();
-    const el = msg.id != null ? byId.get(msg.id) : null;
+    const byId = generations.get(msg.gen ?? gen);
+    const el = msg.id != null ? byId?.get(msg.id) : null;
     if (el) {
       target = { el, clips: new Map() };
       el.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -194,24 +221,33 @@
     label = msg.label || "ここ";
     tag.textContent = label;
     box.hidden = tag.hidden = false;
+    placed = "";
+    bringToFront();
     place();
   }
 
   function clear() {
     cancelAnimationFrame(raf);
     target = null;
+    placed = "";
     box.hidden = tag.hidden = true;
   }
 
   // ─── 変化を知らせる ───────────────────────────────
   let lastInput = 0;
   let timer = 0;
+  let typing = false;
   function notifySoon() {
     clearTimeout(timer);
-    timer = setTimeout(() => chrome.runtime.sendMessage({ from: "web", event: "changed" }).catch(() => {}), SETTLE_MS);
+    timer = setTimeout(() => chrome.runtime.sendMessage({ from: "web", event: "changed" }).catch(() => {}),
+      typing ? TYPING_SETTLE_MS : SETTLE_MS);
   }
   for (const type of ["click", "keyup", "input", "change"]) {
-    window.addEventListener(type, () => { lastInput = Date.now(); notifySoon(); }, true);
+    window.addEventListener(type, () => {
+      lastInput = Date.now();
+      typing = type === "keyup" || type === "input";
+      notifySoon();
+    }, true);
   }
   new MutationObserver((records) => {
     if (Date.now() - lastInput > AFTER_INPUT_MS) return;           // 操作と関係のない、勝手に動く表示は数えない
@@ -223,7 +259,8 @@
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === "items") {
       const focused = document.activeElement && document.activeElement !== document.body ? labelOf(document.activeElement) : "";
-      sendResponse({ items: collect(), title: document.title, url: location.href, focused });
+      const items = collect();
+      sendResponse({ items, gen, title: document.title, url: location.href, focused });
     } else if (msg.type === "highlight") {
       highlight(msg);
       sendResponse({ ok: true });

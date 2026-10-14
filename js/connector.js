@@ -114,7 +114,7 @@ async function webObserve() {
   }
   web.lastShot = shot;
   const items = info.items.map((it) => ({
-    ...it, webId: it.id, parts: [{ t: it.text, x0: it.x0, y0: it.y0, x1: it.x1, y1: it.y1 }],
+    ...it, webId: it.id, webGen: info.gen, parts: [{ t: it.text, x0: it.x0, y0: it.y0, x1: it.x1, y1: it.y1 }],
   }));
   const app = `Web ページ「${info.title}」（${info.url}）${info.focused ? `。入力中の場所: ${info.focused}` : ""}`;
   return { items, shot, app };
@@ -139,11 +139,11 @@ function loadCanvas(dataUrl) {
 function syncWebHighlight() {
   if (!web.tabId) return;
   const t = watching() && state.step < lesson().steps.length ? state.target : null;
-  const key = t ? JSON.stringify([t.webId ?? null, t.webId ? null : t.box, t.name]) : "";
+  const key = t ? JSON.stringify([t.webId ?? null, t.webGen ?? null, t.webId ? null : t.box, t.name]) : "";
   if (key === web.highlighted) return;
   web.highlighted = key;
   if (!t) extCall("clear").catch(() => {});
-  else if (t.webId) extCall("highlight", { id: t.webId, label: t.name }).catch(() => {});
+  else if (t.webId) extCall("highlight", { gen: t.webGen, id: t.webId, label: t.name }).catch(() => {});
   else extCall("highlight", { box: t.box, label: t.name }).catch(() => {});
 }
 

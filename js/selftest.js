@@ -288,6 +288,11 @@ const SelfTest = (() => {
       let r;
       try { r = AI.parseJson(raw); } catch (e) { return `読めません: ${e.message}`; }
       if (r.status !== "next" || !r.say.includes("保存")) return `読み取りが違う: ${JSON.stringify(r)}`;
+      // 文字列の中の生の改行（コード）は、空白にせず改行のまま読む
+      const code = AI.parseJson('{"input_text":"for n in nums:\n    print(n)","say":"x"}');
+      if (code.input_text !== "for n in nums:\n    print(n)") return `コードの改行・字下げが崩れた: ${JSON.stringify(code.input_text)}`;
+      // オブジェクトでない答えは受け取らない
+      try { AI.parseJson("null"); return "null をそのまま受け取った"; } catch { /* 期待どおり */ }
     }],
     ["AI: 表示名で入力したモデル名をモデルコードに直す", async () => {
       const cases = { "Gemini 3.5 Flash Lite": "gemini-3.5-flash-lite", " models/gemini-3.8-flash ": "gemini-3.8-flash", "": AI.DEFAULT_GEMINI_MODEL };
@@ -313,6 +318,13 @@ const SelfTest = (() => {
       if (body.contents[0].parts.filter((p) => p.inlineData).length !== 2) return "前後2枚の画像を送っていない";
       if (r.currentDone !== true || r.targetId !== 1 || r.targetText !== "挿入") return `答えの読み取りが違う: ${JSON.stringify(r)}`;
       if (r.say !== "「挿入」タブを押してください") return `案内に番号札の番号が残っています: ${r.say}`;
+      // コードの添字（nums[0]）は番号札の番号と間違えて消さない
+      window.fetch = async () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text:
+        '{"current_done":"none","status":"next","say":"print(nums[0]) と書くと、最初の数が出ます","target_id":0,"target_text":"","reason":""}' }] } }] }));
+      AI.resetForTest();
+      const r2 = await AI.coach({ image: img, before: null, appeared: [], disappeared: [], app: "", goal: "g", done: [], current: null, items: [] });
+      window.fetch = real.fetch;
+      if (r2.say !== "print(nums[0]) と書くと、最初の数が出ます") return `コードの添字を消してしまった: ${r2.say}`;
     }],
     ["レッスン「はじめてのスライド」: 文字で確かめて自動で進み、場所を光らせる", async () => {
       await share();
