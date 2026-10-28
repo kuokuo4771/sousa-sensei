@@ -1,6 +1,6 @@
 #!/bin/bash
 # Office アドインのマニフェストに、公開した場所の URL を書き込んだものを作る。
-# 使い方: tools/set-office-url.sh https://ユーザー名.github.io/slide-sensei
+# 使い方: tools/set-office-url.sh https://ユーザー名.github.io/sousa-sensei
 #   → dist/manifest.xml ができる。これを Excel・Word・PowerPoint の wef フォルダに入れる（README 参照）
 set -euo pipefail
 cd "$(dirname "$0")/.."

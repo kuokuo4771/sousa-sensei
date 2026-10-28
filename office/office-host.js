@@ -1,4 +1,4 @@
-// スライド先生 Office 版: Excel・Word・PowerPoint の文書の状態を読む係と、文書の中の場所を見せる係。
+// そうさ先生 Office 版: Excel・Word・PowerPoint の文書の状態を読む係と、文書の中の場所を見せる係。
 // どのアプリも同じ形（OfficeHost）にそろえて、案内の流れ（office-coach.js）からはアプリの違いを気にしない
 //   name       : "Excel" | "Word" | "PowerPoint"
 //   targetKind : AI に答えてもらう「文書の中の場所」の書き方

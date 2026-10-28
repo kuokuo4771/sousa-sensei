@@ -1,4 +1,4 @@
-// スライド先生: 文字認識（tesseract.js）と、文字によるステップ完了の判定
+// そうさ先生: 文字認識（tesseract.js）と、文字によるステップ完了の判定
 
 // ─── 文字認識（tesseract.js。画像はブラウザ内で処理） ───
 const TESSERACT_URL = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";

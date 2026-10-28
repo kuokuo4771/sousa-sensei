@@ -1,4 +1,4 @@
-// スライド先生: 番号札（Set-of-Mark）の共通部品。本体（index.html）と Chrome 拡張機能のサイドパネルで共用する。
+// そうさ先生: 番号札（Set-of-Mark）の共通部品。本体（index.html）と Chrome 拡張機能のサイドパネルで共用する。
 // 拡張機能へは tools/sync-extension.sh でコピーする（extension/shared/som.js）。ここを直したら必ずコピーし直すこと
 // 必要なもの: AI.IMAGE_MAX_SIDE（js/ai.js）
 "use strict";

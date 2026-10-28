@@ -3,6 +3,10 @@
 > 2026-10-07 にフォルダ構成を変えました（段階1）。この文書の中のファイル名は当時のままです。
 > `prototype/slide-sensei.html` → `index.html`＋`js/`、`prototype/practice-slide.html` → `practice.html`、
 > `prototype/capture-test.html` → `tools/capture-test.html`、旧試作・Photoshop 版の仕様 → `archive/`
+>
+> 2026-10-28 に名前を「スライド先生」から「**そうさ先生**」に変えました（PowerPoint 以外も教えるため）。
+> この文書の中の名前は当時のままです。保存済みの設定（localStorage のキー）と拡張機能の目印（`data-slide-sensei-hub`）は、
+> 設定やつながりが切れないように昔の名前のまま残しています。
 
 ## 0. 前提と制約
 
@@ -219,9 +223,10 @@
 ## 4. 片付けタスク
 
 - [x] `README.md` をブラウザ版の手順に書き換え、Python 版は「旧試作」扱いに
-- [ ] `requirements.txt` / `start.command` は削除 or `legacy/` へ移動
-- [ ] `docs/MVP_SPECIFICATION.md` 等の Photoshop 仕様は `docs/archive/` へ移すか、PowerPoint 版に書き直す
-- [ ] `Extension/` は使わないなら `legacy/` へ
+- [x] `requirements.txt` / `start.command` は `archive/` へ移動（段階1）
+- [x] `docs/MVP_SPECIFICATION.md` 等の Photoshop 仕様は `archive/photoshop-docs/` へ（段階1）
+- [x] `Extension/` は `archive/` へ（段階1）
+- [x] 名前を「そうさ先生」に変更、未コミットだった `prototype/` は `archive/prototype-2026-10-14/` へ（2026-10-28）
 - [x] 初回コミットを作る
 
 ## 5. 行き来を減らす改善（2026-10-07）✅

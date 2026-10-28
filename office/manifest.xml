@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  スライド先生 Office アドインのマニフェスト（Excel・Word・PowerPoint 共通の作業ウィンドウ）。
+  そうさ先生 Office アドインのマニフェスト（Excel・Word・PowerPoint 共通の作業ウィンドウ）。
   https://BASE_URL/ の部分は、公開した場所に置き換える（tools/set-office-url.sh を使う）。
   Mac での入れ方は README の「Office アドイン」を参照。
 -->
@@ -9,9 +9,9 @@
            xsi:type="TaskPaneApp">
   <Id>994c203f-3967-4e93-9838-906187483c6e</Id>
   <Version>0.1.0.0</Version>
-  <ProviderName>スライド先生</ProviderName>
+  <ProviderName>そうさ先生</ProviderName>
   <DefaultLocale>ja-JP</DefaultLocale>
-  <DisplayName DefaultValue="スライド先生" />
+  <DisplayName DefaultValue="そうさ先生" />
   <Description DefaultValue="やりたいことを書くと、AI が文書を見ながら次の一手を1つずつ教えます（リボンの道順と、文書の中の場所を表示）。" />
   <IconUrl DefaultValue="https://BASE_URL/office/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://BASE_URL/office/icon-80.png" />

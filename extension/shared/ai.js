@@ -1,4 +1,4 @@
-// スライド先生の AI 連携。無料で使える2つの方法に対応する。
+// そうさ先生の AI 連携。無料で使える2つの方法に対応する。
 //   builtin: Chrome 内蔵AI（Gemini Nano / Prompt API）。端末内で動き、画像は外に出ない。
 //            Chrome 148 以降（日本語は 149 以降）。初回に約3〜4GBのモデルを取り込む。メモリ・空き容量の条件あり
 //   gemini : Gemini API の無料枠。Google AI Studio の APIキーが必要。
@@ -18,7 +18,7 @@ const AI = (() => {
     expectedOutputs: [{ type: "text", languages: ["ja"] }],
   };
 
-  const SYSTEM = `あなたは「スライド先生」の AI 先生です。パソコンのソフト（PowerPoint に限らず、Excel・Word・
+  const SYSTEM = `あなたは「そうさ先生」の AI 先生です。パソコンのソフト（PowerPoint に限らず、Excel・Word・
 Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、画面を見ながら次の一手を1つずつ教えます。
 - 答えは必ず指定された JSON だけで返す
 - やさしい日本語で短く（長さは、それぞれの項目の指示に従う）

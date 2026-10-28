@@ -1,4 +1,4 @@
-// スライド先生 Office 版の自動テスト。taskpane.html?test で開くと実行され、右下に結果を出す。
+// そうさ先生 Office 版の自動テスト。taskpane.html?test で開くと実行され、右下に結果を出す。
 // Office（Excel・Word・PowerPoint）と AI は偽物に差し替える。テストのあとは AI の設定を元に戻す
 "use strict";
 

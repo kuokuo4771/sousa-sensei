@@ -1,8 +1,8 @@
-// スライド先生 Web 連携: 本体のページ（index.html）の中で動く取り次ぎ役
+// そうさ先生 Web 連携: 本体のページ（index.html）の中で動く取り次ぎ役
 // ページとは window.postMessage で、拡張機能とは chrome.runtime でやりとりする
 //   ページ → 拡張機能: { source: "sensei-hub", id, type, ... }
 //   拡張機能 → ページ: { source: "sensei-ext", type: "hello" | "reply" | "event", ... }
-// 拡張機能はほかのタブの一覧やスクリーンショットを扱えるので、スライド先生の本体のページ
+// 拡張機能はほかのタブの一覧やスクリーンショットを扱えるので、そうさ先生の本体のページ
 // （<html data-slide-sensei-hub> の印があるページ）からの頼みごとだけを取り次ぐ。
 // 同じ名前（index.html など）のほかのページでは何もしない
 

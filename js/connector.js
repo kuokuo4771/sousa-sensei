@@ -1,4 +1,4 @@
-// スライド先生: Web アプリ連携（Chrome 拡張機能「スライド先生 Web 連携」との取り次ぎ）
+// そうさ先生: Web アプリ連携（Chrome 拡張機能「そうさ先生 Web 連携」との取り次ぎ）
 // 拡張機能が入っていれば、画面共有と文字認識の代わりに、Web アプリ（Google Colab など）のタブの
 // 部品の名前と位置を直接読み、ページの上に直接ハイライトを描く。
 // 拡張機能とのやりとりは、このページに入る取り次ぎ役（extension/hub-bridge.js）と window.postMessage で行う
@@ -36,7 +36,7 @@ window.addEventListener("message", (e) => {
 window.postMessage({ source: "sensei-hub", type: "ping" }, "*");
 
 function extCall(type, payload = {}, timeoutMs = 8000) {
-  if (!web.ext) return Promise.reject(new Error("拡張機能「スライド先生 Web 連携」が見つかりません"));
+  if (!web.ext) return Promise.reject(new Error("拡張機能「そうさ先生 Web 連携」が見つかりません"));
   const id = ++web.seq;
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {

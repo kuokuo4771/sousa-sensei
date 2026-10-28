@@ -1,4 +1,4 @@
-// スライド先生: 画面まわり（AI 設定画面・やりたいこと入力欄・⚙ 設定メニュー・ミニ窓・テーマ）
+// そうさ先生: 画面まわり（AI 設定画面・やりたいこと入力欄・⚙ 設定メニュー・ミニ窓・テーマ）
 
 // ─── AI の設定画面 ────────────────────────────────
 el.aiBtn.addEventListener("click", openAiDialog);
@@ -123,7 +123,7 @@ el.pipBtn.addEventListener("click", () => {
 // 案内パネルを最前面の小窓へ移す。開いた小窓を返す
 async function openPip() {
   const pip = await documentPictureInPicture.requestWindow({ width: 380, height: 600 });
-  pip.document.title = "スライド先生";
+  pip.document.title = "そうさ先生";
   document.querySelectorAll("style, link[rel=stylesheet]").forEach((n) => pip.document.head.append(n.cloneNode(true)));
   syncTheme(pip.document);
   pip.document.body.classList.add("pip");

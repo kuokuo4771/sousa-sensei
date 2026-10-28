@@ -1,4 +1,4 @@
-// スライド先生 Web 連携: 取り次ぎ役（Service Worker）
+// そうさ先生 Web 連携: 取り次ぎ役（Service Worker）
 // - 本体のタブ（hub）から頼まれたことを、つないだ Web アプリのタブ（target）へ取り次ぐ
 // - target で起きた変化を hub へ知らせる
 // Service Worker はしばらく使わないと止まるので、どのタブとつないでいるかは storage.session に覚えておく

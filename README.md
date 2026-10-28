@@ -1,11 +1,12 @@
-# スライド先生 (SlideSensei)
+# そうさ先生 (SousaSensei)
 
-PowerPoint の画面を見ながら、**次にやることを1つずつ、操作する場所を光らせて**日本語で教えるブラウザアプリです。
+パソコンのソフト（PowerPoint・Excel・Google Colab など）の画面を見ながら、**次にやることを1つずつ、操作する場所を光らせて**日本語で教えるブラウザアプリです。
+（2026-10-28 に「スライド先生」から改名。最終的には Blender・Illustrator なども教えられるようにするのが目標です）
 
 - インストール不要・Python 不要。Chrome で HTML を開くだけで動きます
 - 基本の案内（変化検知・文字認識・ハイライト）はすべてブラウザ内で処理し、画像を外部へ送りません
 - AI は任意（無料）。Chrome 内蔵AI（端末内）か Gemini API 無料枠を選べます → [AI を使う](#ai-を使う任意無料)
-- 案内は「ミニ窓」（常に最前面の小窓）に出るので、PowerPoint の横に置いて使えます
+- 案内は「ミニ窓」（常に最前面の小窓）に出るので、教わりたいソフトの横に置いて使えます
 
 **使い方は [docs/USAGE.md](docs/USAGE.md)** にまとめています（本体・Web アプリ連携・Office アドインの3つ）。
 
@@ -29,7 +30,7 @@ PowerPoint の画面を見ながら、**次にやることを1つずつ、操作
 
 ## Web アプリ（Google Colab など）とつなぐ
 
-Web アプリは、Chrome 拡張機能「スライド先生 Web 連携」（`extension/`）を使うと、もっと正確に案内できます。
+Web アプリは、Chrome 拡張機能「そうさ先生 Web 連携」（`extension/`）を使うと、もっと正確に案内できます。
 **Colab を開いて拡張機能のアイコンを押すだけ**で、Chrome の右側（サイドパネル）に案内が出ます（本体も画面共有もいりません）。
 
 - ボタン・メニュー・入力欄の**名前と位置をページから直接読む**（文字認識いらず。アイコンだけのボタンも名前が分かる）
@@ -42,12 +43,12 @@ Web アプリは、Chrome 拡張機能「スライド先生 Web 連携」（`ext
 1. Chrome で `chrome://extensions` を開き、右上の「デベロッパー モード」を ON
 2. 「パッケージ化されていない拡張機能を読み込む」→ このフォルダの中の `extension` フォルダを選ぶ
    （入れ直したときは 🔄 で再読み込み）
-3. ツールバーの 🧩 →「スライド先生 Web 連携」の 📌 でツールバーに出しておく
+3. ツールバーの 🧩 →「そうさ先生 Web 連携」の 📌 でツールバーに出しておく
 
 ### 使い方（サイドパネル・おすすめ）
 
 1. Google Colab のノートブックを開く
-2. ツールバーのスライド先生のアイコンを押す → 右側にサイドパネルが開く（初回は下の「AI の設定」で AI を選ぶ）
+2. ツールバーのそうさ先生のアイコンを押す → 右側にサイドパネルが開く（初回は下の「AI の設定」で AI を選ぶ）
 3. やりたいこと（例: セルを実行したい、GPU を使いたい）を書いて「開始」
 4. Colab のページで赤く光った場所を操作すると、AI が確かめて次の一手を出します。迷ったら「できた？」に答える
 
@@ -74,7 +75,7 @@ Office アドインは **https で公開した場所からしか読み込めま�
    - Excel: `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef`
    - Word: `~/Library/Containers/com.microsoft.Word/Data/Documents/wef`
    - PowerPoint: `~/Library/Containers/com.microsoft.Powerpoint/Data/Documents/wef`
-3. Office を開き直し、「ホーム」→「アドイン」から「スライド先生」を選ぶ
+3. Office を開き直し、「ホーム」→「アドイン」から「そうさ先生」を選ぶ
 
 ## AI を使う（任意・無料）
 
@@ -122,7 +123,7 @@ Office アドインは **https で公開した場所からしか読み込めま�
 | `js/` | アプリ本体の処理（下の「ファイル構成」） |
 | `practice.html` | PowerPoint がない環境用の練習用画面 |
 | `practice-colab.html` | Google Colab 風の練習用ページ（Web アプリ連携の練習用・ネット不要） |
-| `extension/` | Chrome 拡張機能「スライド先生 Web 連携」（`sidepanel.html` が単独で動く案内、`shared/` は本体の `js/ai.js`・`js/som.js` の写し。`tools/sync-extension.sh` で更新） |
+| `extension/` | Chrome 拡張機能「そうさ先生 Web 連携」（`sidepanel.html` が単独で動く案内、`shared/` は本体の `js/ai.js`・`js/som.js` の写し。`tools/sync-extension.sh` で更新） |
 | `office/` | Office アドイン（Excel・Word・PowerPoint の作業ウィンドウ）。`taskpane.html?test` で自動テスト5件 |
 | `tools/capture-test.html` | 画面収録・変化検知の計測ツール（閾値調整用） |
 | `tools/bundle.sh` | すべてを1つの HTML にまとめる（1ファイルで配りたいとき） |
@@ -130,6 +131,7 @@ Office アドインは **https で公開した場所からしか読み込めま�
 | `docs/MVP_PLAN.md` | MVP の計画・計測結果・判断の記録 |
 | `docs/USAGE.md` | **使い方ガイド**（3つの使い方・ボタンの意味・困ったとき） |
 | `docs/DEMO.md` | 発表デモの手順と台本 |
+| `docs/TEST_PLAN.md` | **実機テスト表**（本物の環境で測る課題と記録の表。Blender・Excel・Illustrator を含む） |
 | `archive/` | 旧試作（Python 版・Chrome 拡張・Photoshop 版の仕様） |
 
 ## レッスン
@@ -190,10 +192,11 @@ CSS は `index.html` の中にあります。ミニ窓（Document PiP）へそ�
 tools/bundle.sh
 ```
 
-`dist/slide-sensei.html` に、すべてをまとめた1つの HTML ができます（`--test` を付けるとテストも入る）。
+`dist/sousa-sensei.html` に、すべてをまとめた1つの HTML ができます（`--test` を付けるとテストも入る）。
 
 ## 旧試作（archive/）
 
 - `main.py` / `start.command` / `requirements.txt`: Python + Gemini のネイティブ試作（現環境では Python が使えないため未使用）
 - `Extension/`: Chrome 拡張の試作（段階2の Chrome 拡張の参考）
 - `photoshop-docs/`・`photoshop-prototype/`: Photoshop 版「操作ナビ」の初期仕様と UI モック
+- `prototype-2026-10-14/`: 2026-10-14 時点の本体画面の写し（入力内容の表示が入る前）

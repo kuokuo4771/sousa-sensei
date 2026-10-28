@@ -1,4 +1,4 @@
-// スライド先生: 画面の変化検知（カーソルを無視し、操作が落ち着いてから判定する）
+// そうさ先生: 画面の変化検知（カーソルを無視し、操作が落ち着いてから判定する）
 
 function toGray(frame) {
   gridCtx.drawImage(frame.source, 0, 0, GRID_W, GRID_H);
