@@ -82,6 +82,7 @@ const SelfTest = (() => {
   const TAB_X = (i) => 1560 + i * 56;   // パネルのタブのアイコンの中心の横位置（高さ 120px）
   const PHOTO = [700, 450, 1100, 750];  // 写真のような模様の範囲 [x0, y0, x1, y1]
   const DENSE_X = (i) => 760 + i * 30;  // 詰まったアイコンの列（Blender のヘッダーのように、すき間 6px）の中心の横位置（高さ 69px）
+  const LONE_X = 520;                   // 設定欄の文字のあいだに1つだけあるアイコン（Photoshop のオプションバーのように）
   function designScreen() {
     const c = document.createElement("canvas");
     c.width = W;
@@ -115,6 +116,7 @@ const SelfTest = (() => {
     for (let i = 0; i < 5; i++) icon(TAB_X(i), 120, [7, 1, 2, 3, 6][i]);
     x.save(); x.lineWidth = 2;
     for (let i = 0; i < 10; i++) { x.save(); x.translate(DENSE_X(i), 69); x.scale(0.85, 0.85); icon(0, 0, i % 8); x.restore(); }
+    x.save(); x.translate(LONE_X, 69); x.scale(0.85, 0.85); icon(0, 0, 7); x.restore();
     x.restore();
     // パネルの文字と色見本
     x.fillStyle = "#aaa"; x.fillText("アピアランス", 1520, 190);
@@ -320,12 +322,13 @@ const SelfTest = (() => {
       if (tabs.length < 5) return `パネルのタブのアイコンが ${tabs.length} / 5 個しか見つからない`;
       const dense = [...Array(10).keys()].filter((i) => near(DENSE_X(i), 69));
       if (dense.length < 9) return `詰まったアイコンの列が ${dense.length} / 10 個しか見つからない`;
+      if (!near(LONE_X, 69)) return "設定欄の文字のあいだに1つだけあるアイコンが見つからない";
       // 文字のある所（メニューバー・左上の設定欄）と写真の上には、アイコンの札が付かないこと
       const bad = r.icons.filter((b) => b.y1 * H < 44 || (b.y1 * H < 94 && b.x0 * W < 420) ||
         (b.x0 * W >= PHOTO[0] - 5 && b.x1 * W <= PHOTO[2] + 5 && b.y0 * H >= PHOTO[1] - 5 && b.y1 * H <= PHOTO[3] + 5));
       const at = (b) => `(${Math.round(b.x0 * W)},${Math.round(b.y0 * H)})-(${Math.round(b.x1 * W)},${Math.round(b.y1 * H)})`;
       if (bad.length) return `メニューの文字や写真の上にアイコンの札が ${bad.length} 個付いた: ${bad.map(at).join(" ")}`;
-      if (r.icons.length > 8 + 5 + 10 + 12 + 4) return `アイコンが多すぎる（${r.icons.length} 個）`;
+      if (r.icons.length > 8 + 5 + 10 + 1 + 12 + 4) return `アイコンが多すぎる（${r.icons.length} 個）`;
       if (light.icons.length > 2) return `アイコンのない明るい画面で、アイコンが ${light.icons.length} 個見つかった`;
       const items = buildItems(r);
       if (!items.some((it) => it.icon) || !items.some((it) => it.text.includes("ファイル"))) return "番号札に文字とアイコンの両方が入っていない";

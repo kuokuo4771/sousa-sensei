@@ -17,6 +17,7 @@ function showAi(text, cls = "") {
 
 // 文字認識の単語の範囲の行き過ぎを直す（光らせる範囲が大きく崩れるのを防ぐ）
 // - 文字の高さがほかの単語よりずっと高いもの（アイコンや図形を文字と読んだもの）は除く
+// - 自信度がとても低い1文字（アイコンや「⌄」を「隊」「較」などと読んだもの）は除く。2文字以上は、本物でも低いことがある（「パス」が 0）
 // - 文字数のわりに横に長すぎる範囲（後ろの余白やとなりの部品まで伸びたもの）は、文字数に見合う幅に切り詰める
 function tidyWords(read) {
   const heights = read.words.map((w) => (w.y1 - w.y0) * read.h).sort((a, b) => a - b);
@@ -25,6 +26,7 @@ function tidyWords(read) {
   for (const w of read.words) {
     const hPx = (w.y1 - w.y0) * read.h;
     if (median && hPx > median * 3) continue;
+    if ([...norm(w.t)].length === 1 && (w.c ?? 100) < 20) continue;
     const chars = [...norm(w.t)];
     const est = chars.reduce((s, ch) => s + (/[\x20-\x7e]/.test(ch) ? 0.6 : 1), 0) * hPx;   // 文字数に見合う幅（px）
     const widthPx = (w.x1 - w.x0) * read.w;
@@ -40,7 +42,7 @@ function tidyWords(read) {
 function buildItems(read) {
   const items = [];
   const icons = (read.icons ?? []).map((b) => ({ ...b, text: ICON_TEXT, parts: [], icon: true }));
-  for (const w of dropMisreadIcons(tidyWords(read), icons)) {
+  for (const w of dropMisreadIcons(tidyWords(read), icons, read.h / read.w)) {
     const last = items[items.length - 1];
     const hPx = (w.y1 - w.y0) * read.h;
     const sameLine = last && Math.abs((last.y0 + last.y1) / 2 - (w.y0 + w.y1) / 2) * read.h < hPx * 0.6;

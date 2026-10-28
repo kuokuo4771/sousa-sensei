@@ -130,6 +130,7 @@ Office アドインは **https で公開した場所からしか読み込めま�
 | `tools/capture-test.html` | 画面収録・変化検知の計測ツール（閾値調整用） |
 | `tools/bundle.sh` | すべてを1つの HTML にまとめる（1ファイルで配りたいとき） |
 | `tools/set-office-url.sh` | Office アドインのマニフェストに公開した URL を書き込む |
+| `tools/bundle-shot.sh` | 本物のソフトのスクリーンショット1枚で、AI に見せる番号札（文字・アイコン）の付き方を確かめるページを作る |
 | `docs/MVP_PLAN.md` | MVP の計画・計測結果・判断の記録 |
 | `docs/USAGE.md` | **使い方ガイド**（3つの使い方・ボタンの意味・困ったとき） |
 | `docs/DEMO.md` | 発表デモの手順と台本 |

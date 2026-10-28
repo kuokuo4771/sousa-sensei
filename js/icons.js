@@ -14,7 +14,7 @@ const ICON_RING_MAX = 0.12;    // まわりの帯のうち、ふちの点がこ�
 const ICON_ALIGN = 0.25;       // 並んでいるとみなす中心のずれ（大きさに対する割合）
 const ICON_GAP = 3;            // 並びの中で、となりのアイコンとの間がこれ（大きさの何倍）以内
 const ICON_GROUP = 3;          // この数以上そろって並んでいるものだけをアイコンとみなす
-const ICON_LIMIT = 40;         // 1画面で番号札を付けるアイコンの数の上限
+const ICON_LIMIT = 60;         // 1画面で番号札を付けるアイコンの数の上限（Photoshop のツールバーだけで 20 個以上ある）
 const ICON_TEXT_CONF = 60;     // 文字認識の自信度（0-100）がこれ以上の単語だけを本物の文字とみなす
 const ICON_TEXT_SURE = 85;     // 自信度がこれ以上なら、アイコンの候補を2つ以上またいでも本物の文字（大きな字は1文字ずつが候補になる）
 
@@ -83,8 +83,10 @@ function findIcons(gray, w, h, words = []) {
 
   // 4. 本物の文字の上にあるもの（文字をアイコンと見誤ったもの）を除く。
   //    文字認識はアイコンの列も「OS」「エグ」のような文字と読むので、どの単語を本物の文字とみなすかは realText で決める
-  const px = words.map((t) => ({ x0: t.x0 * w - 3, y0: t.y0 * h - 3, x1: (t.x1 * w) + 3, y1: (t.y1 * h) + 3 }));
-  const real = words.map((t, k) => realText(t, blobs.filter((b) => coverage(b, px[k]) > 0.3).length));
+  //    1文字ずつに分かれて読まれた言葉（「線」「幅」）もあるので、となり合う単語をまとめた言葉で判断する
+  const lines = phrases(words, h / w);
+  const px = lines.map((t) => ({ x0: t.x0 * w - 3, y0: t.y0 * h - 3, x1: (t.x1 * w) + 3, y1: (t.y1 * h) + 3 }));
+  const real = lines.map((t, k) => realText(t, blobs.filter((b) => coverage(b, px[k]) > 0.3).length));
   const onText = (b) => px.some((t, k) => real[k] && coverage(b, t) > 0.3);
   // ボタンの枠の中にアイコンの線があるときは、外側（ボタン全体）だけを残す
   const inside = (a, b) => a !== b && a.x0 >= b.x0 && a.y0 >= b.y0 && a.x1 <= b.x1 && a.y1 <= b.y1;
@@ -94,6 +96,7 @@ function findIcons(gray, w, h, words = []) {
   // 5. 同じくらいの大きさで、縦か横にそろって並んでいるもの（ツールバー）だけを残す
   const similar = (a, b) => Math.max(a.size, b.size) / Math.min(a.size, b.size) < 1.6;
   const keep = new Set();
+  const found = { row: [], col: [] };   // 見つかった並び（横の並び・縦の並び）のアイコン
   for (const axis of ["row", "col"]) {
     const visited = new Set();
     for (const a of cand) {
@@ -111,8 +114,17 @@ function findIcons(gray, w, h, words = []) {
           if (aligned && gap <= ICON_GAP * Math.max(g.size, b.size)) { visited.add(b); group.push(b); }
         }
       }
-      if (group.length >= ICON_GROUP) group.forEach((b) => keep.add(b));
+      if (group.length >= ICON_GROUP) group.forEach((b) => { keep.add(b); found[axis].push(b); });
     }
+  }
+  // 6. 横の並びと同じ行、縦の並びと同じ列にそろっていれば、離れていても残す
+  //    （Photoshop のオプションバーのように、アイコンと文字が交互に並ぶ所では、アイコンが3つ続かない）。
+  //    縦のツールバーと「同じ行」は数えない（ツールバーは画面の上から下まであるので、どの高さでも当てはまってしまう）
+  for (const b of cand) {
+    if (keep.has(b)) continue;
+    const tol = (k) => ICON_ALIGN * Math.max(k.size, b.size);
+    if (found.row.some((k) => similar(k, b) && Math.abs(k.cy - b.cy) <= tol(k)) ||
+        found.col.some((k) => similar(k, b) && Math.abs(k.cx - b.cx) <= tol(k))) keep.add(b);
   }
 
   return [...keep]
@@ -153,13 +165,38 @@ function realText(word, iconsUnder) {
   return letters >= 2 && conf >= ICON_TEXT_CONF && (iconsUnder <= 1 || conf >= ICON_TEXT_SURE);
 }
 
-// アイコンの上にある、アイコンの読み違いの単語を除く（番号札に「らら」「OGA」のような意味のない文字を出さないため）
-function dropMisreadIcons(words, icons) {
+// 同じ行でとなり合う単語を1つの言葉にまとめる（文字認識は「線幅」を「線」「幅」のように1文字ずつ返すことがある）。
+// 返り値: [{ t（つなげた文字）, c（自信度の平均）, x0, y0, x1, y1, members（元の単語の番号） }]。aspect: 画面の高さ÷幅
+function phrases(words, aspect) {
+  const out = [];
+  words.forEach((t, k) => {
+    const last = out[out.length - 1];
+    const hh = t.y1 - t.y0;
+    const sameLine = last && Math.abs((last.y0 + last.y1) / 2 - (t.y0 + t.y1) / 2) < hh * 0.6;
+    if (sameLine && t.x0 >= last.x0 && t.x0 - last.x1 < hh * 1.2 * aspect) {   // すき間が文字の高さの 1.2 倍まで
+      last.t += t.t;
+      last.cs.push(t.c ?? 100);
+      last.members.push(k);
+      last.x1 = Math.max(last.x1, t.x1); last.y0 = Math.min(last.y0, t.y0); last.y1 = Math.max(last.y1, t.y1);
+    } else {
+      out.push({ t: t.t, cs: [t.c ?? 100], members: [k], x0: t.x0, y0: t.y0, x1: t.x1, y1: t.y1 });
+    }
+  });
+  return out.map((p) => ({ ...p, c: p.cs.reduce((a, b) => a + b, 0) / p.cs.length }));
+}
+
+// アイコンの上にある、アイコンの読み違いの単語を除く（番号札に「らら」「OGA」のような意味のない文字を出さないため）。
+// 本物の言葉の一部（「線」「幅」の「線」など）は残す
+function dropMisreadIcons(words, icons, aspect) {
   if (!icons.length) return words;
-  return words.filter((t) => {
-    const under = icons.filter((b) => coverage(b, t) > 0.3 || coverage(t, b) > 0.3);
-    const covered = icons.reduce((sum, b) => sum + coverage(t, b), 0);
+  const keep = new Set();
+  for (const p of phrases(words, aspect)) {
+    const under = icons.filter((b) => coverage(b, p) > 0.3 || coverage(p, b) > 0.3);
+    if (realText(p, under.length)) p.members.forEach((k) => keep.add(k));
+  }
+  return words.filter((t, k) => {
     // 文字認識は読み違いの範囲を細長く返すことが多いので、少しでも（15%）アイコンに重なれば除く
-    return covered <= 0.15 || realText(t, under.length);
+    const covered = icons.reduce((sum, b) => sum + coverage(t, b), 0);
+    return covered <= 0.15 || keep.has(k);
   });
 }
