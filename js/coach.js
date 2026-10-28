@@ -4,6 +4,7 @@
 // 文字認識で見つけた画面上の文字に番号札を付け、AI には「どの番号を操作するか」を選んでもらう。
 // AI は画面上の正確な位置や名前を作るのが苦手なので、位置は文字認識の値をそのまま使う
 const MAX_ITEMS = 120;  // AI に渡す番号札の数の上限（多すぎると小さいモデルが迷う）
+const ICON_TEXT = "［アイコン］";   // 文字のない番号札（アイコンだけのボタン）の札の文字
 
 function renderAiButton() { el.aiBtn.textContent = `🤖 AI ${AI.label()}`; }
 renderAiButton();
@@ -32,13 +33,14 @@ function tidyWords(read) {
   return out;
 }
 
-// 文字認識の単語を、AI に選ばせる番号札にまとめる。
+// 文字認識の単語（と、画像から見つけたアイコン）を、AI に選ばせる番号札にまとめる。
 // 同じ行で近い単語はつなげる（「新しい」「スラ」「イド」→「新しいスライド」）。
 // 日本語では語の中のすき間と隣のボタンとのすき間が同じくらいなので、隣のボタン名までつながることがある。
 // そのため元の単語（parts）を残し、光らせるときに AI が答えた文字の部分だけに絞る（boxForText）
 function buildItems(read) {
   const items = [];
-  for (const w of tidyWords(read)) {
+  const icons = (read.icons ?? []).map((b) => ({ ...b, text: ICON_TEXT, parts: [], icon: true }));
+  for (const w of dropMisreadIcons(tidyWords(read), icons)) {
     const last = items[items.length - 1];
     const hPx = (w.y1 - w.y0) * read.h;
     const sameLine = last && Math.abs((last.y0 + last.y1) / 2 - (w.y0 + w.y1) / 2) * read.h < hPx * 0.6;
@@ -56,11 +58,11 @@ function buildItems(read) {
       items.push({ text: w.t, parts: [{ ...w }], x0: w.x0, y0: w.y0, x1: w.x1, y1: w.y1 });
     }
   }
-  // 枠線や罫線を「|」「一」と読んだだけのものは除く
-  return items
+  // 枠線や罫線を「|」「一」と読んだだけのものは除く。アイコンの札は文字の札のあとに並べる
+  const texts = items
     .filter((it) => /[\p{L}\p{N}]/u.test(it.text) && !/^[|｜_\-—ー一]+$/.test(it.text))
-    .slice(0, MAX_ITEMS)
-    .map((it, i) => ({ ...it, id: i + 1 }));
+    .slice(0, MAX_ITEMS - icons.length);
+  return [...texts, ...icons].map((it, i) => ({ ...it, id: i + 1 }));
 }
 
 // 今の画面を AI に見せて次の一手を聞く。
@@ -93,12 +95,13 @@ async function askCoach(ctx, before = null) {
       ? "画面全体を共有中（どのアプリかは画面から判断する。白い四角は案内用の窓を隠したもので、操作の対象ではない）"
       : state.stream?.getVideoTracks?.()[0]?.label ?? "";
   }
-  const { appeared, disappeared } = textChanges(before?.texts, items);
+  const words = items.filter((it) => !it.icon);
+  const { appeared, disappeared } = textChanges(before?.texts, words);
   const r = await AI.coach({
     image: images.tagged, before: before?.image ?? null, appeared, disappeared, app, items, ...ctx,
   });
   // 次の比較に使う「今の画面」（番号札なし）と文字
-  const snapshot = { image: images.plain, texts: new Set(items.map((it) => norm(it.text))) };
+  const snapshot = { image: images.plain, texts: new Set(words.map((it) => norm(it.text))) };
   return { r, items, snapshot };
 }
 
@@ -171,6 +174,8 @@ function targetFromAI(r, items, clear = false) {
   const it = resolveTarget(r, items);
   // Web アプリの部品は名前と位置が正確なので、部品まるごとを光らせる（webId でページの上にも直接出す）
   if (it?.webId) state.target = { box: it, name: it.text, say: r.say, webId: it.webId, webGen: it.webGen };
+  // アイコンは札の文字がないので、範囲まるごと。名前は AI が答えたもの（「長方形ツール」など）を使う
+  else if (it?.icon) state.target = { box: it, name: r.targetText && norm(r.targetText) !== norm(ICON_TEXT) ? r.targetText : "このアイコン", say: r.say };
   else if (it) state.target = { box: boxForText(it, r.targetText, items), name: r.targetText || it.text, say: r.say };
   else if (r.box) state.target = { box: r.box, name: "ここ（AI の推定）", say: r.say };
   else if (clear) state.target = null;

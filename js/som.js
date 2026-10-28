@@ -65,7 +65,8 @@ function textChanges(beforeTexts, items) {
 function resolveTarget(r, items) {
   const byId = items.find((i) => i.id === r.targetId) ?? null;
   const want = r.targetText ? norm(r.targetText) : "";
-  if (!want || (byId && norm(byId.text) === want)) return byId;
+  // アイコンの札（文字なし）は、AI が答えた名前（「長方形ツール」など）では確かめられないので、番号を信じる
+  if (!want || byId?.icon || (byId && norm(byId.text) === want)) return byId;
   const exact = items.filter((i) => norm(i.text) === want);
   // ゆるく合わせるときも、AI の答えの半分以上の長さが重なる札だけにする
   // （「の」「表」のような1文字の札が、長い答えの一部として選ばれると、まったく別の場所が光る）

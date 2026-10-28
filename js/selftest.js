@@ -76,6 +76,64 @@ const SelfTest = (() => {
     return c;
   }
 
+  // 暗い色のデザインアプリ風の画面（practice-dark.html と同じ配置）。
+  // 左のツールバーと右のパネルのタブは、文字のないアイコンだけ。真ん中の白い紙の上に、写真のような細かい模様を置く
+  const TOOL_Y = (i) => 120 + i * 64;   // ツールバーのアイコンの中心の高さ（左端から 34px）
+  const TAB_X = (i) => 1560 + i * 56;   // パネルのタブのアイコンの中心の横位置（高さ 120px）
+  const PHOTO = [700, 450, 1100, 750];  // 写真のような模様の範囲 [x0, y0, x1, y1]
+  const DENSE_X = (i) => 760 + i * 30;  // 詰まったアイコンの列（Blender のヘッダーのように、すき間 6px）の中心の横位置（高さ 69px）
+  function designScreen() {
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const x = c.getContext("2d");
+    x.fillStyle = "#1f1f1f"; x.fillRect(0, 0, W, H);
+    x.fillStyle = "#2a2a2a"; x.fillRect(0, 0, W, 44);
+    x.fillStyle = "#d6d6d6"; x.font = `17px ${FONT}`;
+    ["ファイル", "編集", "オブジェクト", "書式", "選択", "表示", "ウィンドウ"].forEach((t, i) => x.fillText(t, 20 + i * 130, 29));
+    x.fillStyle = "#323232"; x.fillRect(0, 44, W, 50);
+    x.fillStyle = "#d6d6d6"; x.fillText("選択ツール", 20, 76); x.fillText("線幅", 180, 76); x.fillText("角の丸み", 330, 76);
+    x.fillStyle = "#323232"; x.fillRect(0, 94, 68, H - 94); x.fillRect(1500, 94, 420, H - 94);
+    x.fillStyle = "#262626"; x.fillRect(68, 94, 1432, H - 94);
+    x.fillStyle = "#fff"; x.fillRect(260, 220, 1050, 760);
+    // ツールバー（選んでいるツールは青い四角の上）
+    x.strokeStyle = "#d0d0d0"; x.lineWidth = 2.5; x.lineCap = "round"; x.lineJoin = "round";
+    const icon = (cx, cy, i) => {
+      x.beginPath();
+      if (i === 0) { x.moveTo(cx - 7, cy - 11); x.lineTo(cx + 9, cy + 2); x.lineTo(cx + 1, cy + 3); x.lineTo(cx - 7, cy + 11); x.closePath(); }
+      if (i === 1) x.rect(cx - 12, cy - 9, 24, 18);
+      if (i === 2) x.ellipse(cx, cy, 12, 9, 0, 0, Math.PI * 2);
+      if (i === 3) { x.moveTo(cx, cy - 13); x.lineTo(cx + 9, cy); x.lineTo(cx, cy + 13); x.lineTo(cx - 9, cy); x.closePath(); }
+      if (i === 4) { x.moveTo(cx - 10, cy - 11); x.lineTo(cx + 10, cy - 11); x.moveTo(cx, cy - 11); x.lineTo(cx, cy + 12); x.moveTo(cx - 5, cy + 12); x.lineTo(cx + 5, cy + 12); }
+      if (i === 5) { x.moveTo(cx + 3, cy - 12); x.lineTo(cx + 12, cy - 3); x.lineTo(cx - 6, cy + 12); x.lineTo(cx - 12, cy + 12); x.lineTo(cx - 12, cy + 6); x.closePath(); }
+      if (i === 6) { x.arc(cx, cy + 2, 10, 0, Math.PI * 2); x.moveTo(cx - 4, cy - 8); x.lineTo(cx - 4, cy - 13); }
+      if (i === 7) { x.arc(cx - 3, cy - 3, 8, 0, Math.PI * 2); x.moveTo(cx + 3, cy + 3); x.lineTo(cx + 12, cy + 12); }
+      x.stroke();
+    };
+    x.fillStyle = "#2d5f9e"; x.fillRect(12, TOOL_Y(0) - 22, 44, 44);
+    for (let i = 0; i < 8; i++) icon(34, TOOL_Y(i), i);
+    for (let i = 0; i < 5; i++) icon(TAB_X(i), 120, [7, 1, 2, 3, 6][i]);
+    x.save(); x.lineWidth = 2;
+    for (let i = 0; i < 10; i++) { x.save(); x.translate(DENSE_X(i), 69); x.scale(0.85, 0.85); icon(0, 0, i % 8); x.restore(); }
+    x.restore();
+    // パネルの文字と色見本
+    x.fillStyle = "#aaa"; x.fillText("アピアランス", 1520, 190);
+    x.fillStyle = "#d6d6d6"; x.fillText("塗り", 1520, 236); x.fillText("線", 1520, 286); x.fillText("不透明度", 1520, 336);
+    ["#ffffff", "#222222", "#e03a2f", "#2d6fd6", "#2f9e57", "#f2c230"].forEach((col, i) => {
+      x.fillStyle = col; x.fillRect(1620 + i * 40, 216, 28, 28); x.fillRect(1620 + i * 40, 266, 28, 28);
+    });
+    // 写真のような細かい模様（アイコンと見誤らないことを確かめる）
+    let seed = 7;
+    const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let y = PHOTO[1]; y < PHOTO[3]; y += 6) {
+      for (let xx = PHOTO[0]; xx < PHOTO[2]; xx += 6) {
+        const v = Math.round(80 + 120 * rand());
+        x.fillStyle = `rgb(${v},${Math.round(v * 0.8)},${Math.round(60 + 100 * rand())})`; x.fillRect(xx, y, 6, 6);
+      }
+    }
+    return c;
+  }
+
   // ボタンが密集したリボン（隣のボタン名がくっつきやすい）
   const DENSE_TABS = ["ファイル", "ホーム", "挿入", "描画", "デザイン", "画面切り替え", "アニメーション", "スライドショー", "校閲", "表示"];
   const DENSE_LABELS = ["貼り付け", "切り取り", "コピー", "新しいスライド", "レイアウト", "リセット", "セクション", "太字", "斜体", "下線", "図形", "配置", "テキストボックス"];
@@ -248,6 +306,32 @@ const SelfTest = (() => {
         if (!r?.text.includes(want)) return `「${want}」を読めなかった（読めた文字: ${r?.text.slice(0, 60)}…）`;
       }
     }],
+    ["アイコン: 暗い画面のツールバーとタブのアイコンを見つけ、文字や写真の上には付けない", async () => {
+      state.stream = {};
+      fake.screen = designScreen;
+      const r = await readScreen({ keepShot: true });
+      fake.screen = () => pptScreen();
+      const light = await readScreen({ keepShot: true });
+      state.stream = null;
+      const near = (cx, cy) => r.icons.some((b) => Math.abs((b.x0 + b.x1) / 2 * W - cx) < 10 && Math.abs((b.y0 + b.y1) / 2 * H - cy) < 10);
+      const tools = [...Array(8).keys()].filter((i) => near(34, TOOL_Y(i)));
+      if (tools.length < 8) return `ツールバーのアイコンが ${tools.length} / 8 個しか見つからない（見つかったアイコン ${r.icons.length} 個）`;
+      const tabs = [...Array(5).keys()].filter((i) => near(TAB_X(i), 120));
+      if (tabs.length < 5) return `パネルのタブのアイコンが ${tabs.length} / 5 個しか見つからない`;
+      const dense = [...Array(10).keys()].filter((i) => near(DENSE_X(i), 69));
+      if (dense.length < 9) return `詰まったアイコンの列が ${dense.length} / 10 個しか見つからない`;
+      // 文字のある所（メニューバー・左上の設定欄）と写真の上には、アイコンの札が付かないこと
+      const bad = r.icons.filter((b) => b.y1 * H < 44 || (b.y1 * H < 94 && b.x0 * W < 420) ||
+        (b.x0 * W >= PHOTO[0] - 5 && b.x1 * W <= PHOTO[2] + 5 && b.y0 * H >= PHOTO[1] - 5 && b.y1 * H <= PHOTO[3] + 5));
+      const at = (b) => `(${Math.round(b.x0 * W)},${Math.round(b.y0 * H)})-(${Math.round(b.x1 * W)},${Math.round(b.y1 * H)})`;
+      if (bad.length) return `メニューの文字や写真の上にアイコンの札が ${bad.length} 個付いた: ${bad.map(at).join(" ")}`;
+      if (r.icons.length > 8 + 5 + 10 + 12 + 4) return `アイコンが多すぎる（${r.icons.length} 個）`;
+      if (light.icons.length > 2) return `アイコンのない明るい画面で、アイコンが ${light.icons.length} 個見つかった`;
+      const items = buildItems(r);
+      if (!items.some((it) => it.icon) || !items.some((it) => it.text.includes("ファイル"))) return "番号札に文字とアイコンの両方が入っていない";
+      const junk = items.filter((it) => !it.icon && it.y0 * H > 44 && it.y1 * H < 94 && it.x0 * W > 700);
+      if (junk.length) return `アイコンの読み違いの文字が番号札に残った: ${junk.map((it) => it.text).join("、")}`;
+    }],
     ["ハイライト: くっついたボタン名から、AI が答えた文字の部分だけを光らせる", async () => {
       state.stream = {};
       fake.screen = denseScreen;
@@ -367,6 +451,31 @@ const SelfTest = (() => {
       fake.scene = "table";
       await show(() => pptScreen({ ribbon: "insert", table: true }));
       if (!lesson().finished) return "表を入れても完了にならない";
+    }],
+    ["おまかせ: アイコンだけのボタンを番号札で選ばせ、その場所を光らせる", async () => {
+      AI.save({ provider: "builtin" });
+      // 一覧の位置（%）から、長方形ツールにいちばん近い「［アイコン］」の札を選ぶ AI
+      const iconNear = (text, cx, cy) => {
+        let best = 0, bestD = Infinity;
+        for (const m of text.matchAll(/\[(\d+)\] ［アイコン］ \((\d+)%, (\d+)%\)/g)) {
+          const d = Math.hypot(m[2] / 100 * W - cx, m[3] / 100 * H - cy);
+          if (d < bestD) { best = Number(m[1]); bestD = d; }
+        }
+        return best;
+      };
+      fake.ai = (text) => ({ current_done: "none", status: "next", say: "左のツールバーで長方形ツールを選んでください",
+        target_id: iconNear(text, 34, TOOL_Y(1)), target_text: "長方形ツール", reason: "" });
+      await share();
+      await show(designScreen);
+      startCoach("長方形を描いて、色を赤にしたい");
+      await settle();
+      const call = fake.aiCalls[0];
+      if (!call || !/アイコンだけのボタン/.test(call.text)) return "AI にアイコンの札の説明を渡していない";
+      const b = state.target?.box;
+      if (!b) return "何も光っていない";
+      const cx = (b.x0 + b.x1) / 2 * W, cy = (b.y0 + b.y1) / 2 * H;
+      if (Math.abs(cx - 34) > 10 || Math.abs(cy - TOOL_Y(1)) > 10) return `光った場所がずれている（中心 ${Math.round(cx)}, ${Math.round(cy)}）`;
+      if (state.target.name !== "長方形ツール") return `光った場所の名前が「${state.target.name}」`;
     }],
     ["おまかせ: AI が「まだ」と言っても「できた ✓」で進める", async () => {
       AI.save({ provider: "builtin" });
@@ -530,7 +639,8 @@ const SelfTest = (() => {
     return results;
   }
 
-  return { run };
+  // screens: テスト用の画面（調べものに使う。例: SelfTest.screens.designScreen() で canvas が返る）
+  return { run, screens: { pptScreen, darkScreen, designScreen, denseScreen } };
 })();
 
 SelfTest.run();

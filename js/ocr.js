@@ -53,6 +53,7 @@ function ensureOcr() {
 //   body : リボンより下の文字
 //   words: [{ t, x0, y0, x1, y1 }]（位置は画面に対する割合 0〜1）
 //   shot : 読んだ画面そのもの（色つき）。keepShot のときだけ。AI に見せる画像と番号札の位置を、同じ瞬間の画面にそろえるため
+//   icons: アイコンだけのボタンの範囲 [{ x0, y0, x1, y1 }]（js/icons.js）。keepShot のときだけ（AI に番号札で選ばせるため）
 function readScreen({ keepShot = false } = {}) {
   const run = async () => {
     const worker = await ensureOcr();
@@ -75,6 +76,8 @@ function readScreen({ keepShot = false } = {}) {
     ctx.drawImage(frame.source, 0, 0, canvas.width, canvas.height);
     frame.close();
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // アイコンは白黒にする前の明るさで探す（白黒にすると、暗い画面の灰色のアイコンが消える）
+    const gray = keepShot ? Uint8Array.from({ length: img.width * img.height }, (_, i) => img.data[i * 4]) : null;
     binarize(img);
     ctx.putImageData(img, 0, 0);
     const started = performance.now();
@@ -83,10 +86,13 @@ function readScreen({ keepShot = false } = {}) {
       .map((w) => ({
         t: w.text.replace(/\s+/g, ""),
         x0: w.bbox.x0 / canvas.width, y0: w.bbox.y0 / canvas.height,
-        x1: w.bbox.x1 / canvas.width, y1: w.bbox.y1 / canvas.height,
+        x1: w.bbox.x1 / canvas.width, y1: w.bbox.y1 / canvas.height, c: w.confidence,
       }))
       .filter((w) => w.t);
-    const read = { words, text: words.map((w) => w.t).join(""), w: canvas.width, h: canvas.height, shot };
+    const read = { words, text: words.map((w) => w.t).join(""), w: canvas.width, h: canvas.height, shot, icons: [] };
+    if (gray) {
+      read.icons = findIcons(gray, canvas.width, canvas.height, words);
+    }
     const ribbonBottom = Math.max(0, ...findAll(read, RIBBON_WORDS).filter((b) => b.y1 < 0.5).map((b) => b.y1));
     read.body = words.filter((w) => (w.y0 + w.y1) / 2 > ribbonBottom).map((w) => w.t).join("");
     el.ocrMeta.textContent = `（${((performance.now() - started) / 1000).toFixed(1)}秒・${read.text.length}文字）`;

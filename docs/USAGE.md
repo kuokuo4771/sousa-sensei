@@ -172,6 +172,7 @@ Office アドインは https で公開した場所からしか読み込めませ
 |---|---|
 | `practice.html` | PowerPoint 風の練習用画面。PowerPoint がない PC でのデモや練習に（① で「タブ」を共有） |
 | `practice-colab.html` | Colab 風の練習用ページ（ネット不要）。② の練習に |
+| `practice-dark.html` | 暗い色のデザインアプリ風の練習用画面。アイコンだけのツールバーを、① の画面共有で試す |
 | `tools/capture-test.html` | 画面収録と変化検知の計測ツール。反応が鈍い・反応しすぎるときの調査に |
 | `index.html?test` | 本体の自動テスト（17件）。アドレスバーの末尾に `?test` を足して Enter |
 | `tools/bundle-sidepanel.sh` | 拡張機能のサイドパネルの自動テスト（12件）を `dist/sidepanel-test.html` にまとめる。できたファイルを開くとテストが走る |
