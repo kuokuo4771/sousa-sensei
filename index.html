@@ -64,14 +64,15 @@
     font-family: var(--font-ja); font-size: 14px; line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
-  button { font: inherit; color: inherit; cursor: pointer; }
+  /* 日本語は1文字ごとに折り返せてしまうので、ボタンの文字は折り返さず、並びのほうを折り返す */
+  button { font: inherit; color: inherit; cursor: pointer; white-space: nowrap; flex: none; max-width: 100%; }
 
-  .app { height: 100vh; display: grid; grid-template-rows: auto 1fr; min-height: 640px; }
+  .app { height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 480px; }
 
   /* ─── Top bar ───────────────────────────────────── */
   .topbar {
-    display: flex; align-items: center; gap: 16px;
-    padding: 12px 20px;
+    display: flex; align-items: center; gap: 10px 12px;
+    padding: 10px 16px;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
@@ -79,7 +80,7 @@
   .brand {
     display: flex; align-items: center; gap: 10px;
     font-family: var(--font-ui); font-weight: 700; font-size: 16px;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.01em; white-space: nowrap;
   }
   .brand-mark {
     width: 26px; height: 26px; display: grid; place-items: center;
@@ -92,10 +93,12 @@
     color: var(--muted); font-size: 12px; margin-left: 4px;
   }
   .topbar-spacer { flex: 1; }
+  .share-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  @media (max-width: 1240px) { .brand-sub { display: none; } }
   .capture-chip {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 12px; padding: 6px 12px;
-    border-radius: 999px; font-weight: 500;
+    border-radius: 999px; font-weight: 500; white-space: nowrap;
     background: var(--warn-soft); color: var(--warn);
   }
   .capture-chip::before {
@@ -110,26 +113,6 @@
   }
   @keyframes pulse-dot { 0%,100% { opacity: 0.6 } 50% { opacity: 1 } }
 
-  .lesson-picker {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--panel-alt); border: 1px solid var(--border);
-    border-radius: 999px; padding: 4px 6px 4px 14px;
-  }
-  .lesson-picker label {
-    font-size: 11px; color: var(--muted);
-    text-transform: uppercase; letter-spacing: 0.08em;
-    font-family: var(--font-ui);
-  }
-  .lesson-picker select {
-    appearance: none; background: transparent; border: 0;
-    color: var(--ink); font: inherit; font-weight: 500;
-    padding: 6px 28px 6px 8px;
-    background-image:
-      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
-      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-    background-position: right 12px top 14px, right 8px top 14px;
-    background-size: 4px 4px, 4px 4px; background-repeat: no-repeat;
-  }
   .icon-btn {
     background: transparent; border: 1px solid var(--border);
     padding: 7px 10px; border-radius: 8px; font-size: 13px;
@@ -140,7 +123,7 @@
   /* ─── Workspace ─────────────────────────────────── */
   .workspace {
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: minmax(0, 1fr) 400px;
     gap: 16px; padding: 16px; min-height: 0;
   }
   @media (max-width: 960px) {
@@ -163,12 +146,13 @@
   }
   .capture-header strong {
     font-family: var(--font-ui); font-weight: 600; font-size: 13px;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.01em; white-space: nowrap;
   }
-  .capture-header .dim { color: var(--muted); font-size: 12px; }
+  .capture-header .dim { color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .capture-stage {
-    position: relative; display: grid; place-items: center;
+    position: relative; display: grid; grid-template-columns: minmax(0, 1fr);
+    align-items: safe center; justify-items: center;
     padding: 20px; background: repeating-linear-gradient(
       45deg,
       color-mix(in oklab, var(--panel-alt) 90%, var(--ink) 4%) 0 12px,
@@ -176,6 +160,8 @@
     );
     min-height: 0; overflow: hidden;
   }
+  /* 開始画面は窓が低いと収まらないので、切らずにスクロールできるようにする */
+  .capture-stage:has(> .empty:not([hidden])) { overflow-y: auto; }
   .capture-stage video {
     max-width: 100%; max-height: 100%;
     border-radius: 8px; background: #000;
@@ -183,15 +169,21 @@
     display: block;
   }
   .capture-stage .empty {
-    display: grid; place-items: center; gap: 16px;
-    text-align: center; padding: 24px;
-    max-width: 480px;
+    display: grid; justify-items: center; gap: 14px;
+    text-align: center; padding: 4px;
+    max-width: 500px;
   }
   .empty h2 {
     font-family: var(--font-ui); font-size: 22px; font-weight: 700;
-    margin: 0; letter-spacing: -0.01em;
+    margin: 0; letter-spacing: -0.01em; text-wrap: balance; word-break: auto-phrase;
   }
   .empty p { margin: 0; color: var(--muted); font-size: 14px; }
+  .empty .cta-note { font-size: 13px; color: var(--ink-soft); }
+  .empty .fine-print { font-size: 12px; text-align: left; }
+  .alt-route {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px;
+    width: 100%; padding-top: 14px; border-top: 1px solid var(--border);
+  }
   .primary-cta {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 12px 22px;
@@ -204,17 +196,16 @@
   .primary-cta:hover { background: color-mix(in oklab, var(--accent) 90%, black); }
   .primary-cta:active { transform: translateY(1px); }
   .capture-foot {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
     padding: 8px 14px; border-top: 1px solid var(--border-soft);
     background: var(--panel-alt); font-size: 12px; color: var(--muted);
   }
   .capture-foot .stat { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .capture-foot .sep { color: var(--border); }
-  .capture-foot .actions { margin-left: auto; display: flex; gap: 6px; }
 
   /* Right: AI tutor */
   .tutor {
-    display: grid; grid-template-rows: auto auto 1fr auto;
+    display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-width: 0;
     background: var(--panel); border: 1px solid var(--border);
     border-radius: 12px; box-shadow: var(--shadow); min-height: 0;
   }
@@ -253,6 +244,8 @@
     display: flex; flex-direction: column; gap: 12px;
     scroll-behavior: smooth;
   }
+  /* 窓が低くても中身を押しつぶさず、スクロールで見せる */
+  .tutor-body > * { flex: none; }
   .msg { display: grid; grid-template-columns: 28px 1fr; gap: 10px;
          animation: slide-in 0.25s ease; }
   @keyframes slide-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -367,7 +360,7 @@
   .done-card strong { display: block; font-size: 18px; margin-bottom: 4px; }
 
   .log-head { font-size: 11px; color: var(--muted); font-family: var(--font-ui); letter-spacing: 0.06em; margin-top: 4px; }
-  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
+  .log { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
   .log time { font-family: var(--font-mono); margin-right: 6px; }
 
   .check-chip { background: var(--success-soft); color: var(--success); }
@@ -472,6 +465,29 @@
     box-shadow: var(--shadow-lift);
   }
   .settings-pop .icon-btn { text-align: left; }
+  /* 狭い窓では設定ボタンの位置によらず、バーの幅いっぱいに開いて画面の外へはみ出さない */
+  @media (max-width: 520px) {
+    .topbar { position: relative; }
+    .settings-wrap { position: static; }
+    .settings-pop { left: 12px; right: 12px; top: calc(100% - 4px); }
+  }
+  .lesson-box { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .lesson-box summary { cursor: pointer; font-weight: 600; color: var(--ink-soft); }
+  .lesson-box-body { display: grid; gap: 8px; margin-top: 8px; }
+  .tpl-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-radius: 10px;
+    background: var(--ai-soft); font-size: 12.5px; }
+  .tpl-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+  .tpl-list li { display: flex; align-items: center; gap: 8px; }
+  .tpl-list li span { flex: 1; min-width: 0; }
+  .dialog textarea { width: 100%; padding: 8px 10px; font: 12px/1.5 var(--font-mono); border: 1px solid var(--border);
+    border-radius: 8px; background: var(--panel-alt); color: var(--ink); resize: vertical; }
+  .done-card .btn { margin-top: 10px; }
+  .plan-box ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 12.5px; color: var(--ink-soft); }
+  .plan-box li.done { color: var(--muted); text-decoration: line-through; }
+  .plan-box li.now { color: var(--ink); font-weight: 700; }
+  .lesson-box-body small { font-size: 12px; color: var(--muted); }
+  .lesson-box select, .dialog select { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; font-size: 13px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--panel-alt); color: var(--ink); }
   .goal-form { display: flex; gap: 6px; }
   .goal-form input {
     flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
@@ -515,8 +531,8 @@
   .dialog a { color: var(--ai); }
   .dialog .setup-steps { margin: 0 0 8px; padding-left: 22px; display: grid; gap: 6px; font-size: 13px; }
   .dialog code { font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--panel-alt); }
-  .dialog select { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; font-size: 13px;
-    border: 1px solid var(--border); border-radius: 8px; background: var(--panel-alt); color: var(--ink); }
+  .dialog .dialog-actions { flex-wrap: wrap; }
+  #builtinPrepare { white-space: normal; }
 
   [hidden] { display: none !important; }
 </style>
@@ -525,15 +541,16 @@
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">P</span>
+      <span class="brand-mark">そ</span>
       そうさ先生
       <span class="brand-sub">— 画面を見て、次の一手を光らせて教える</span>
     </div>
     <div class="topbar-spacer"></div>
-    <div class="capture-chip" id="captureChip">未共有</div>
-    <div class="lesson-picker">
-      <label for="lessonSelect">レッスン</label>
-      <select id="lessonSelect"></select>
+    <div class="share-controls">
+      <div class="capture-chip" id="captureChip">画面を共有していません</div>
+      <button class="btn" id="shareTopBtn" title="画面をこのアプリに見せます。どの画面を見せるかは次の画面で選べます">🖥 画面を共有する</button>
+      <button class="btn" id="pauseBtn" hidden title="共有はそのままで、変化の見守りと案内だけを止めます">⏸ 見守りを一時停止</button>
+      <button class="btn danger" id="stopCaptureBtn" hidden title="画面を見せるのをやめます">⏹ 画面共有を止める</button>
     </div>
     <button class="icon-btn" id="makeBtn" title="やりたいことを書くと、AI が画面を見ながら1手ずつ案内します（どのソフトでも）">🧭 AIにおまかせ</button>
     <button class="icon-btn" id="pipBtn" title="案内を常に最前面の小窓に出す">📌 ミニ窓で表示</button>
@@ -543,6 +560,8 @@
         <button class="icon-btn" id="aiBtn" title="AI の設定（Chrome 内蔵AI または Gemini API 無料枠）">🤖 AI OFF</button>
         <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、光らせる場所を探し、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
         <button class="icon-btn" id="autoBtn" title="ON にすると「できた？」のあと数秒待って自動で次へ進みます">⏩ 自動で次へ OFF</button>
+        <button class="icon-btn" id="planBtn" title="実験中: ON だと、AI が最初に全体の手順を1回だけ考え、あとは文字認識で進めます。OFF だと、一手ごとに AI に聞きます">📝 手順を先に考える ON</button>
+        <button class="icon-btn" id="tplBtn" title="自分で保存したテンプレの書き出し・読み込み">📘 テンプレの管理</button>
         <button class="icon-btn" id="voiceBtn" title="次の手順を音声で読み上げます">🔊 音声 ON</button>
         <button class="icon-btn" id="themeToggle" title="テーマ切替">🌙 テーマ</button>
       </div>
@@ -558,29 +577,25 @@
       </div>
       <div class="capture-stage" id="captureStage">
         <div class="empty" id="emptyState">
-          <div style="font-size: 44px;">🖥️</div>
-          <h2>そうさ先生へようこそ</h2>
-          <p>PowerPoint の画面を見ながら、次にやることを1つずつ、<br>操作する場所を光らせて教えます。</p>
+          <h2>画面を見ながら、操作を1つずつ教えます</h2>
+          <p>PowerPoint・Excel・Blender など、どのソフトでも使えます。<br>次に操作する場所は赤い枠で光らせます。</p>
+          <button class="primary-cta" id="startCaptureBtn">🖥 画面を共有してはじめる</button>
+          <p class="cta-note">次に出る画面で <strong>「画面全体」</strong> を選んで「共有」を押します（おすすめ）。<br>
+            ソフトのウインドウだけだと、メニューやダイアログが写らないことがあります。</p>
           <ol class="onboard">
-            <li><span class="num">1</span><span>教わりたいソフト（PowerPoint・Excel・Blender など。なければ「練習用画面」）を開いておく</span></li>
-            <li><span class="num">2</span><span>「はじめる」を押し、<strong>画面全体</strong>を選ぶ（おすすめ）。
-              メニューやダイアログも見えるので、AI が反応しやすくなります。ソフトのウインドウだけを選ぶこともできます</span></li>
-            <li><span class="num">3</span><span>そのソフトをクリックして前に出し、あとは操作するだけ。
-              案内は最前面のミニ窓と音声で届きます。ミニ窓の「🧭」欄にやりたいことを書くと AI が案内します</span></li>
+            <li><span class="num">1</span><span>教わりたいソフトを開いておく</span></li>
+            <li><span class="num">2</span><span>画面を共有したら、そのソフトをクリックして前に出す</span></li>
+            <li><span class="num">3</span><span>案内の「🧭」欄にやりたいことを書いて「開始」。案内は最前面のミニ窓と音声で届きます</span></li>
           </ol>
-          <div class="cta-row">
-            <button class="primary-cta" id="startCaptureBtn">▶ はじめる</button>
-            <button class="secondary-cta" id="practiceBtn">🧪 練習用画面を開く</button>
-          </div>
-          <p style="font-size: 13px;"><strong>Google Colab などの Web アプリなら</strong>、画面共有の代わりに拡張機能でつなぐと、
-            ボタンの名前と位置を正確に読み、ページの上に直接光らせて案内できます。</p>
-          <div class="cta-row">
+          <div class="alt-route">
+            <span>Google Colab などの Web アプリなら</span>
             <button class="secondary-cta" id="webBtn">🌐 Web アプリにつなぐ</button>
           </div>
-          <p style="font-size: 12px;">画像と文字認識はこのブラウザ内だけで処理します（AI を Gemini にした場合だけ、画面の画像を Google に送ります。
-            画面全体を共有すると、ほかのアプリや通知も写るので注意してください）。<br>
-            ミニ窓とこのページは、画面全体を共有しても塗りつぶしてから読むので、案内の文字を AI が読み違えることはありません。<br>
-            （文字認識の部品と日本語データ 約2MB を初回だけ jsDelivr から読み込みます）</p>
+          <p class="fine-print">画像と文字認識はこのブラウザ内だけで処理します（AI を Gemini にした場合だけ、画面の画像を Google に送ります。
+            画面全体を共有すると、ほかのアプリや通知も写るので注意してください）。
+            ミニ窓とこのページは塗りつぶしてから読みます。
+            文字認識の部品と日本語データ 約2MB を初回だけ jsDelivr から読み込みます。
+            初めて共有するとき、Mac では システム設定 → プライバシーとセキュリティ → 画面収録 で Chrome を許可します。</p>
         </div>
         <div class="empty" id="webState" hidden>
           <div style="font-size: 44px;">🌐</div>
@@ -593,16 +608,12 @@
         <div class="target-box" id="targetBox" hidden></div>
         <div class="target-tag" id="targetTag" hidden></div>
       </div>
-      <div class="capture-foot">
+      <div class="capture-foot" id="captureFoot" hidden title="画面の変化を見守っている様子です">
         <span class="stat" id="statMotion">増減 —</span>
         <span class="sep">·</span>
         <span class="stat" id="statNet">差 —</span>
         <span class="sep">·</span>
         <span class="stat" id="statChanges">変化 0 回</span>
-        <div class="actions">
-          <button class="btn" id="pauseBtn" hidden>⏸ 一時停止</button>
-          <button class="btn danger" id="stopCaptureBtn" hidden>共有を停止</button>
-        </div>
       </div>
     </section>
 
@@ -633,9 +644,23 @@
         <div class="tutor-body" aria-live="polite">
           <form class="goal-form" id="goalForm">
             <input type="text" id="goalInline" autocomplete="off"
-                   placeholder="🧭 やりたいことを書く → AI が案内（どのソフトでも）">
+                   placeholder="🧭 やりたいことを書く（例: 表を入れたい）">
             <button class="btn primary" type="submit">開始</button>
           </form>
+
+          <div class="tpl-note" id="tplNote" hidden>
+            <span id="tplNoteText"></span>
+            <button class="btn" id="tplAiBtn" type="button">🧭 AI に考えてもらう</button>
+          </div>
+
+          <details class="lesson-box">
+            <summary>📚 テンプレとレッスン（AI なしで使えます）</summary>
+            <div class="lesson-box-body">
+              <label>テンプレ・レッスン <select id="lessonSelect"></select></label>
+              <button class="btn" id="practiceBtn" type="button">🧪 PowerPoint 風の練習用画面を開く</button>
+              <small>PowerPoint がないときは、練習用画面をタブで共有して試せます。</small>
+            </div>
+          </details>
 
           <div class="step-card" id="stepCard">
             <div class="step-num" id="stepNum"></div>
@@ -663,8 +688,17 @@
 
           <div class="done-card" id="doneCard" hidden>
             <div class="done-emoji">🎉</div>
-            <strong>レッスン完了！</strong>
-            お疲れさまでした。「次のレッスン →」で続けられます。
+            <strong id="doneTitle"></strong>
+            <span id="doneNote"></span>
+            <button class="btn" id="saveTplBtn" type="button" hidden>📘 この手順をテンプレに保存</button>
+          </div>
+
+          <div class="confirm" id="loopBox" hidden>
+            <p>同じ手順がくり返されています。やりたいことは、もうできていますか？</p>
+            <div class="row">
+              <button class="btn yes" id="finishBtn">🎉 もうできた</button>
+              <button class="btn" id="continueBtn">続ける</button>
+            </div>
           </div>
 
           <div class="confirm" id="confirmBox" hidden>
@@ -675,6 +709,11 @@
               <button class="btn" id="notYetBtn">まだ</button>
             </div>
           </div>
+
+          <details class="lesson-box plan-box" id="planBox" open hidden>
+            <summary>📝 全体の手順</summary>
+            <ol id="planList"></ol>
+          </details>
 
           <div class="watch" id="watch">画面共有を開始すると、変化を見守ります。</div>
 
@@ -728,9 +767,24 @@
   </div>
 </dialog>
 
+<dialog class="dialog" id="tplDialog">
+  <h2>📘 テンプレの管理</h2>
+  <p class="note">テンプレがあれば、AI を使わずに案内できます。うまくいった手順は、完了したときの「📘 この手順をテンプレに保存」で増やせます。
+    ほかの人に渡すときは「書き出す」でコピーした文字を送り、受け取った人は下の欄に貼り付けて「読み込む」を押します。</p>
+  <ul class="tpl-list" id="tplList"></ul>
+  <textarea id="tplText" rows="8" spellcheck="false" placeholder="ここに書き出したテンプレが出ます。受け取ったテンプレはここに貼り付けて「読み込む」"></textarea>
+  <p class="note" id="tplResult"></p>
+  <div class="dialog-actions">
+    <button class="btn" id="tplExport">書き出す（コピー）</button>
+    <button class="btn" id="tplImport">読み込む</button>
+    <span class="actions-spacer"></span>
+    <button class="btn" id="tplClose">閉じる</button>
+  </div>
+</dialog>
+
 <dialog class="dialog" id="aiDialog">
   <h2>🤖 AI の設定</h2>
-  <p class="note">AI は「🤖 AIに聞く」「できた？にひとこと添える」「✨ 手順を作る」に使います。どちらも無料で使えます。</p>
+  <p class="note">AI は「🧭 AIにおまかせ」「🤖 AIに聞く」「できた？にひとこと添える」に使います。</p>
   <label class="choice">
     <input type="radio" name="provider" value="off">
     <span><b>使わない</b><small>文字認識と変化検知だけで案内します</small></span>
@@ -748,14 +802,9 @@
   <div class="fields" id="geminiFields">
     <label>APIキー（<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> で無料で作れます）
       <input type="password" id="geminiKey" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
-    <label>モデル（無料枠で画像も扱えるもの。▼で候補を表示）
-      <input type="text" id="geminiModel" list="geminiModels" spellcheck="false"></label>
-    <datalist id="geminiModels">
-      <option value="gemini-3.5-flash-lite">速い・軽い（回数を多く使いたいとき）</option>
-      <option value="gemini-3.8-flash">賢い（標準）</option>
-      <option value="gemini-3.5-flash">中くらい</option>
-    </datalist>
-    <small>キーはこのブラウザの中にだけ保存されます。</small>
+    <label>モデル
+      <select id="geminiModel"></select></label>
+    <small>「接続テスト」を押すと、このキーで使えるモデルもメニューに追加されます。キーはこのブラウザの中にだけ保存されます。</small>
   </div>
   <p class="note" id="aiTestResult"></p>
   <div class="dialog-actions">
@@ -769,6 +818,7 @@
 <!-- 読み込む順番に意味がある（後のファイルは前のファイルで作ったものを使う）。main.js は必ず最後 -->
 <script src="js/ai.js"></script>
 <script src="js/lessons.js"></script>
+<script src="js/templates.js"></script>
 <script src="js/core.js"></script>
 <script src="js/steps.js"></script>
 <script src="js/capture.js"></script>

@@ -5,6 +5,9 @@
 (async () => {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const realAi = JSON.stringify(AI.settings);
+  const realPlan = prefs.plan;
+  const realTemplates = localStorage.getItem(Templates.KEY);
+  localStorage.removeItem(Templates.KEY);
   const realLM = window.LanguageModel;
   const aiCalls = [];
   let answer = () => ({});
@@ -45,7 +48,9 @@
         name: "Sheet1",
         getUsedRangeOrNullObject: () => obj({ isNullObject: false, address: "Sheet1!A1:C3" }),
         tables: obj({ items: [{ name: "テーブル1" }] }),
-        charts: obj({ items: [] }),
+        charts: obj({ items: [{ name: "グラフ1", chartType: "XYScatter", series: obj({ items: [
+          { name: "売上", trendlines: obj({ items: [{ type: "Linear", showEquation: true, showRSquared: false }] }) },
+        ] }) }] }),
         getRange: (a) => ({ select: () => did.push(`select ${a}`) }),
         activate: () => did.push("activate"),
       });
@@ -58,7 +63,7 @@
       };
       window.Excel = { run: (cb) => cb(ctx) };
       const s = await ExcelHost.readState();
-      for (const want of ["選択範囲: Sheet1!A1:C3（3行×3列）", "売上", "太字=true", "罫線=EdgeTop", "表（テーブル）: テーブル1", "グラフ: なし"]) {
+      for (const want of ["選択範囲: Sheet1!A1:C3（3行×3列）", "売上", "太字=true", "罫線=EdgeTop", "表（テーブル）: テーブル1", "近似曲線: 売上にLinear・数式あり"]) {
         if (!s.includes(want)) return `状態の文章に「${want}」がない:\n${s}`;
       }
       if (!(await ExcelHost.show("Sheet2!$A$1:$B$2"))) return "範囲を見せられなかった";
@@ -127,8 +132,9 @@
         if (cur.startsWith("A1")) return { current_done: "yes", status: "next", say: "罫線の ▼ から格子を選んでください", path: ["ホーム", "罫線", "格子"], doc_target: "", reason: "" };
         return { current_done: "yes", status: "done", say: "できました", path: [], doc_target: "", reason: "" };
       };
+      prefs.plan = false;
       startWith(host);
-      startGoal("A1〜C3 に罫線を引きたい");
+      startGoal("A1〜C3 に罫線を引きたい", { useAi: true });
       await wait(300);
       if (host.shown[0] !== "A1:C3") return "AI が答えた範囲を選択して見せていない";
       await wait(POLL_MS * 2 + SETTLE_MS + 300);
@@ -150,6 +156,7 @@
       answer = (text) => current(text).startsWith("（なし")
         ? { current_done: "none", status: "next", say: aiCalls.length > 2 ? "次の一手" : "見出しを選んでください", path: [], doc_target: "", reason: "" }
         : { current_done: "no", status: "next", say: "見出しを選んでください", path: [], doc_target: "", reason: "厳しめ" };
+      prefs.plan = false;
       startWith(host);
       startGoal("見出しを太字にしたい");
       await wait(300);
@@ -161,6 +168,67 @@
       ui.yesBtn.click();
       await wait(300);
       if (run.done.length !== 1 || run.current !== "次の一手") return `「できた ✓」で進まなかった（完了 ${run.done.length}・いまの手順 ${run.current}）`;
+    }],
+    ["テンプレ: やりたいことに合えば AI を使わずに案内し、文書の状態で進み、先の手順にも追いつく", async () => {
+      const host = { name: "Excel", targetKind: "セル範囲", state: "グラフ: なし", shown: [],
+        async readState() { return this.state; }, async show(t) { this.shown.push(t); return true; } };
+      answer = () => { throw new Error("AI を呼んだ"); };
+      startWith(host);
+      if (ui.tplSelect.hidden || ![...ui.tplSelect.options].some((o) => o.value === "excel-trendline")) return "テンプレのメニューに出ない";
+      startGoal("散布図に近似直線を引いて、式も出したい", { auto: true });
+      await wait(300);
+      if (run.mode !== "plan" || run.source !== "template" || run.steps.length !== 4) return `テンプレで始まらない（${run.mode}・${run.steps.length}手）`;
+      if (ui.tplNote.hidden) return "テンプレで案内することを知らせていない";
+      if (ui.planList.children.length !== 4) return "全体の手順を表示していない";
+      host.state = "グラフ: グラフ1（XYScatter） 近似曲線: なし";
+      await wait(POLL_MS * 2 + SETTLE_MS + 300);
+      if (run.index !== 2) return `散布図を入れても追いつかない（ステップ ${run.index + 1}）`;
+      if (ui.pathRow.textContent !== "グラフのデザイン›グラフ要素を追加›近似曲線›線形") return `道順の表示が違う: ${ui.pathRow.textContent}`;
+      host.state = "グラフ: グラフ1（XYScatter） 近似曲線: 売上にLinear";
+      await wait(POLL_MS * 2 + SETTLE_MS + 300);
+      host.state = "グラフ: グラフ1（XYScatter） 近似曲線: 売上にLinear・数式あり";
+      await wait(POLL_MS * 2 + SETTLE_MS + 300);
+      if (!run.finished) return `完了しない（ステップ ${run.index + 1}）`;
+      if (aiCalls.length) return `AI を ${aiCalls.length} 回呼んだ`;
+    }],
+    ["AI の計画: AI は最初の1回だけ。確かめられないときは落ち着いてから聞き、テンプレに保存すると次は AI を使わない", async () => {
+      const host = { name: "Word", targetKind: "文章", state: "選択中の文章: なし", shown: [],
+        async readState() { return this.state; }, async show(t) { this.shown.push(t); this.state = `選択中の文章: 「${t}」`; return true; } };
+      answer = (text) => {
+        if (!/全手順を/.test(text)) throw new Error("計画のあとに AI を呼んだ");
+        return { steps: [
+          { do: "「はじめに」を選んでください", where: "1行目", path: [], doc_target: "はじめに", state_check: [], input: "" },
+          { do: "「ホーム」タブの「太字」を押してください", where: "リボンの左", path: ["ホーム", "太字"], doc_target: "", state_check: ["太字=true"], input: "" },
+        ] };
+      };
+      prefs.plan = true;
+      AI.save({ provider: "builtin" });
+      startWith(host);
+      startGoal("見出しを太字にして目立たせたい", { auto: true });
+      await wait(400);
+      if (run.mode !== "plan" || run.steps.length !== 2) return `計画で始まらない（${run.mode}・${run.steps.length}手）`;
+      if (host.shown[0] !== "はじめに") return "1手目の場所を選択して見せていない";
+      // 言葉で確かめられない手順: 文書が変わっても、すぐには聞かない
+      host.state = "選択中の文章: 「はじめに」 段落を少し変えた";
+      await wait(POLL_MS * 2 + SETTLE_MS + 300);
+      if (!ui.confirmBox.hidden) return "操作の途中で「できた？」を聞いた";
+      await wait(PLAN_ASK_MS);
+      if (ui.confirmBox.hidden) return "落ち着いても「できた？」を聞かない";
+      ui.yesBtn.click();
+      await wait(300);
+      host.state = "選択中の書式: 太字=true";
+      await wait(POLL_MS * 2 + SETTLE_MS + 300);
+      if (!run.finished) return `太字にしても完了にならない（ステップ ${run.index + 1}）`;
+      if (aiCalls.length !== 1) return `AI を ${aiCalls.length} 回呼んだ`;
+      if (ui.saveTplBtn.hidden) return "テンプレに保存するボタンが出ない";
+      ui.saveTplBtn.click();
+      startGoal("見出しを太字にして目立たせたい", { auto: true });
+      await wait(300);
+      if (run.source !== "template") return "保存したテンプレを使わなかった";
+      if (aiCalls.length !== 1) return "保存したテンプレがあるのに AI を呼んだ";
+      const exported = Templates.exportJson();
+      localStorage.removeItem(Templates.KEY);
+      if (Templates.importJson(exported) !== 1) return "書き出したテンプレを読み込めない";
     }],
   ];
 
@@ -179,7 +247,9 @@
     aiCalls.length = 0;
     AI.resetForTest();
     clearTimeout(run.pollTimer);
-    Object.assign(run, { goal: "", done: [], current: null, path: [], target: "", before: null, finished: false, busy: false, again: false, lastState: "" });
+    clearTimeout(run.askTimer);
+    Object.assign(run, { goal: "", done: [], current: null, path: [], target: "", before: null, finished: false, busy: false, again: false, lastState: "",
+      mode: "ai", source: "", steps: [], index: 0, startState: "" });
     let error;
     try {
       error = await fn();
@@ -191,6 +261,9 @@
   }
   clearTimeout(run.pollTimer);
   window.LanguageModel = realLM;
+  prefs.plan = realPlan;
+  if (realTemplates === null) localStorage.removeItem(Templates.KEY);
+  else localStorage.setItem(Templates.KEY, realTemplates);
   AI.save(JSON.parse(realAi));
   AI.resetForTest();
   const failed = results.filter((r) => !r.ok).length;

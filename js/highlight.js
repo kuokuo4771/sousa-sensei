@@ -6,7 +6,9 @@ function updateTarget(read) {
   const step = currentStep();
   if (!step?.targets) return;
   for (const c of step.targets) {
-    const boxes = findAll(read, c.re).sort((a, b) => a.y0 - b.y0);
+    const boxes = lesson().planned
+      ? [plannedBox(read, c.name)].filter(Boolean)
+      : findAll(read, c.re).sort((a, b) => a.y0 - b.y0);
     if (boxes.length) {
       state.target = { box: boxes[0], name: c.name, say: c.say };
       state.targetMissing = null;
@@ -15,9 +17,28 @@ function updateTarget(read) {
       return;
     }
   }
+  // 計画から作った手順では、場所が見つからなくても拡大表示は消さず、画面全体を見せて名前で案内する
+  if (lesson().planned) {
+    const name = step.targets[0].name;
+    state.target = { box: { x0: 0, y0: 0, x1: 1, y1: 1 }, noBox: true, name, say: `「${name}」を探して操作してください` };
+    state.targetMissing = null;
+    renderTarget();
+    refreshGuide();
+    return;
+  }
   state.target = null;
   state.targetMissing = step.targets[0].name;
   renderTarget();
+}
+
+// 計画の手順で押す場所。まず名前がぴったりの札、なければ名前を含むいちばん短い札の、その文字の部分
+function plannedBox(read, name) {
+  const items = buildItems(read);
+  const want = norm(name);
+  const exact = items.filter((i) => norm(i.text) === want).sort((a, b) => a.y0 - b.y0);
+  if (exact.length) return exact[0];
+  const part = items.filter((i) => norm(i.text).includes(want)).sort((a, b) => a.text.length - b.text.length);
+  return part.length ? boxForText(part[0], name, items) : null;
 }
 
 // ハイライトの表示・非表示と、見つからないときのお知らせ
@@ -25,7 +46,8 @@ function renderTarget() {
   const t = state.target;
   const show = !!t && watching() && state.step < lesson().steps.length;
   el.guide.hidden = !show;
-  el.targetBox.hidden = el.targetTag.hidden = !show;
+  el.targetBox.hidden = el.targetTag.hidden = !show || !!t?.noBox;
+  el.guideBox.hidden = !!t?.noBox;
   if (show) el.guideSay.textContent = t.say;
   const missing = !show && !!state.targetMissing && watching();
   el.guideMissing.hidden = !missing;

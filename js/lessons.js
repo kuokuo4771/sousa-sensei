@@ -18,6 +18,8 @@ const TITLE_PH = /(?<!サブ)タイトルを入[力カ]/;
 const SUBTITLE_PH = /サブタイトルを入[力カ]/;
 
 const LESSONS = {
+  // 起動直後: レッスンもおまかせも始まっていない状態（手順なし）
+  idle: { name: "", idle: true, steps: [] },
   "first-slide": {
     name: "はじめてのスライド",
     steps: [

@@ -61,8 +61,7 @@ async function connectWeb(tabId) {
   el.emptyState.hidden = true;
   el.webState.hidden = false;
   el.webStateTitle.textContent = r.title;
-  el.captureChip.textContent = "🌐 つないでいます";
-  el.captureChip.classList.add("on");
+  renderShareControls();
   setStatus("見守り中");
   addLog(`🌐 つないだ: ${r.title}`);
   extCall("focus").catch(() => {});   // スクリーンショットはタブが前に出ていないと撮れない
@@ -79,8 +78,7 @@ async function disconnectWeb(reason = "") {
   web.highlighted = "";
   el.webState.hidden = true;
   el.emptyState.hidden = !!state.stream;
-  el.captureChip.textContent = "未共有";
-  el.captureChip.classList.remove("on");
+  renderShareControls();
   state.target = null;
   renderTarget();
   hideConfirm();

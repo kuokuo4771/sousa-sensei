@@ -24,7 +24,7 @@
   header .ai-state { font-size: 11px; color: var(--ai); }
   .notice { padding: 10px; border-radius: 8px; background: var(--warn-soft); font-size: 12.5px; }
   form { display: flex; gap: 6px; }
-  input[type=text], input[type=password] { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
+  input[type=text], input[type=password], select { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
     border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); }
   button { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--panel); color: var(--ink); cursor: pointer; }
@@ -148,7 +148,8 @@
       <label><input type="radio" name="provider" id="providerGemini"> Gemini API 無料枠</label>
       <small>⚠ 無料枠では、送ったページの画像が Google の製品改善に使われます。個人情報や秘密の内容が写るページでは使わないでください。</small>
       <label>APIキー <input type="password" id="geminiKey" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
-      <label>モデル <input type="text" id="geminiModel" spellcheck="false" placeholder="gemini-3.8-flash"></label>
+      <label>モデル <select id="geminiModel"></select></label>
+      <small>「接続テスト」を押すと、このキーで使えるモデルもメニューに追加されます。</small>
       <div class="row"><button id="aiSave">保存</button><button id="aiTest">接続テスト</button></div>
       <small id="aiResult"></small>
       <label><input type="checkbox" id="learnOn" checked> 🎓 学習モード（コードの答えの前に、ヒントで考える時間をとる）</label>

@@ -54,7 +54,7 @@ function ensureOcr() {
 //   words: [{ t, x0, y0, x1, y1 }]（位置は画面に対する割合 0〜1）
 //   shot : 読んだ画面そのもの（色つき）。keepShot のときだけ。AI に見せる画像と番号札の位置を、同じ瞬間の画面にそろえるため
 //   icons: アイコンだけのボタンの範囲 [{ x0, y0, x1, y1 }]（js/icons.js）。keepShot のときだけ（AI に番号札で選ばせるため）
-function readScreen({ keepShot = false } = {}) {
+function readScreen({ keepShot = false, icons = true } = {}) {
   const run = async () => {
     const worker = await ensureOcr();
     if (!worker || !state.stream) return null;
@@ -77,7 +77,7 @@ function readScreen({ keepShot = false } = {}) {
     frame.close();
     const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
     // アイコンは白黒にする前の明るさで探す（白黒にすると、暗い画面の灰色のアイコンが消える）
-    const gray = keepShot ? Uint8Array.from({ length: img.width * img.height }, (_, i) => img.data[i * 4]) : null;
+    const gray = keepShot && icons ? Uint8Array.from({ length: img.width * img.height }, (_, i) => img.data[i * 4]) : null;
     binarize(img);
     ctx.putImageData(img, 0, 0);
     const started = performance.now();
@@ -177,7 +177,20 @@ function checkPassed(check, before, now) {
     if (!before.length) return false;
     if (newPairs(before.map((r) => r.body).join("|"), now.body) < check.grows) return false;
   }
+  // 計画から作った手順: 次に押すボタンの名前などが新しく現れた、または押すタブに切り替わった
+  if (check.newly || check.tab) {
+    if (!before.length) return false;
+    const appeared = check.newly?.some((re) => re.test(now.text) && !before.some((r) => re.test(r.text)));
+    if (!appeared && !(check.tab && tabSwitched(before[0], now))) return false;
+  }
   return true;
+}
+
+// 押すタブ（いま光らせている場所）の見た目が変わり、リボンの文字も入れ替わったか
+function tabSwitched(before, now) {
+  const box = state.target?.noBox ? null : state.target?.box;
+  if (!box || !before.shot || !now.shot) return false;
+  return newPairs(before.text, now.text) >= 6 && regionChanged(before.shot, now.shot, box);
 }
 
 // before になかった「2文字の並び」が now にいくつあるか。
@@ -196,9 +209,14 @@ async function readStepStart(known = null) {
   const step = currentStep();
   if (!ocr.on || !state.stream || !step || !(step.check || step.targets)) return;
   const token = state.stepToken;
-  const read = known ?? await readScreen();
+  const read = known ?? await readScreen(lesson().planned ? PLAN_READ : undefined);
   if (token !== state.stepToken || !read) return;
   state.startRead = read;
+  if (step.skipIfVisible && plannedBox(read, step.skipIfVisible)) {
+    addLog(`→ 「${step.skipIfVisible}」がもう見えているので、この手順は飛ばします`);
+    completeStep("もう開いています", read);
+    return;
+  }
   updateTarget(read);
   if (step.check?.appears && !step.check.gone && !step.check.grows && checkPassed(step.check, [read], read)) {
     autoAdvance(read);

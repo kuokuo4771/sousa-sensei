@@ -9,9 +9,31 @@
 const AI = (() => {
   const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/";
   const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
+  // モデルのメニュー。提供状況が変わったら Gemini API の deprecations ページを見て直す（最終確認 2026-11-04）
+  const GEMINI_MODELS = [
+    { code: "gemini-3.8-flash", label: "Gemini 3.8 Flash — 賢い（標準）" },
+    { code: "gemini-3.6-flash", label: "Gemini 3.6 Flash — 中くらい" },
+    { code: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite — 速い・軽い" },
+    { code: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro（プレビュー）— 無料枠で使えないことがあります" },
+    { code: "gemini-4-argon", label: "Gemini 4 Argon — 無料枠で使えないことがあります" },
+    { code: "gemini-2.5-pro", label: "Gemini 2.5 Pro — 以前から使っている人だけ・12/1 終了予定" },
+  ];
+  const NOT_FOR_COACH = /tts|image|embedding|live|audio|robotics|computer-use|transcribe|aqa/i;
   const IMAGE_MAX_SIDE = 1536;        // AI に渡す画像の長辺（番号札の小さな数字が読める大きさ）
   const MIN_INTERVAL_MS = 4000;       // 呼び出しの最短間隔（無料枠を使い切らないため）
   const MAX_PER_MINUTE = 8;           // 1分あたりの上限
+  const RATE_LIMIT_WAIT_SEC = 30;     // Gemini が待ち時間を教えてくれないときに待つ秒数
+  // Gemini は混み合うと 503 を返したり、返事をしないまま止まったりする。待ち時間に上限を付け、やり直す
+  const limits = {
+    timeoutMs: 60000,       // 画像つきの問い合わせ（計画づくりは考える時間がかかる）
+    pingTimeoutMs: 20000,   // 接続テスト
+    listTimeoutMs: 15000,   // モデルの一覧
+    retryWaitMs: 2000,      // 混んでいたとき、同じモデルでやり直すまでの間
+  };
+  // 選んだモデルが混んでいて答えられないときに使う、軽いモデル（上から順に、選んだモデルと違うもの）
+  const FALLBACK_MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
+  let notice = () => {};   // やり直しなどを利用者に知らせる先（画面側で setNotice する）
+  function setNotice(fn) { const prev = notice; notice = fn ?? (() => {}); return prev; }
 
   const BUILTIN_OPTIONS = {
     expectedInputs: [{ type: "text", languages: ["ja"] }, { type: "image" }],
@@ -43,6 +65,33 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
       .replace(/[\s_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
     return code || DEFAULT_GEMINI_MODEL;
   }
+  let foundModels = [];   // 接続テストで分かった、このキーで使えるモデル（メニューに足す）
+
+  // このキーで使えるモデルを Gemini API に聞く。画面の案内に向かないもの（音声・画像生成など）は除く
+  async function listGeminiModels() {
+    const res = await fetchWithTimeout(`${GEMINI_ENDPOINT.slice(0, -1)}?pageSize=200`,
+      { headers: { "x-goog-api-key": settings.geminiKey } }, limits.listTimeoutMs);
+    if (!res.ok) throw new Error(`モデルの一覧を取得できませんでした（${res.status}）`);
+    const data = await res.json();
+    foundModels = (data.models ?? [])
+      .filter((m) => m.supportedGenerationMethods?.includes("generateContent"))
+      .map((m) => ({ code: String(m.name ?? "").replace(/^models\//, ""), name: m.displayName }))
+      .filter((m) => m.code.startsWith("gemini-") && !NOT_FOR_COACH.test(m.code))
+      .map((m) => ({ code: m.code, label: m.name ? `${m.name}（${m.code}）` : m.code }));
+    return foundModels;
+  }
+
+  // モデルのメニューを作る。保存済みのモデルがメニューになくても、選択肢に足して消さない
+  function fillModelSelect(select, current) {
+    const code = normalizeModel(current);
+    const choices = [...GEMINI_MODELS];
+    for (const m of [...foundModels, { code, label: code }]) {
+      if (!choices.some((c) => c.code === m.code)) choices.push(m);
+    }
+    select.replaceChildren(...choices.map((m) => new Option(m.label, m.code)));
+    select.value = code;
+  }
+
   function enabled() {
     return settings.provider === "builtin" || (settings.provider === "gemini" && !!settings.geminiKey);
   }
@@ -68,6 +117,10 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
     });
     gate = turn.catch(() => {});
     return turn;
+  }
+  // 少し待てばやり直せるエラーなら、待つ時間（ミリ秒）を返す。やり直しても無駄なエラーなら 0
+  function retryDelay(e) {
+    return e.retryMs ?? (/間をあけて|上限/.test(e.message) ? 4500 : 0);
   }
   function usage() {
     const now = Date.now();
@@ -111,23 +164,83 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   }
 
   // ─── Gemini API ──────────────────────────────
-  async function askGemini(text, images) {
+  // 返事が timeoutMs 以内に来なければ打ち切る。つながらない・時間切れは「やり直せばうまくいくかもしれない」エラーにする
+  async function fetchWithTimeout(url, opts, timeoutMs) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...opts, signal: ctrl.signal });
+    } catch (e) {
+      const err = new Error(e.name === "AbortError"
+        ? `Gemini から ${Math.round(timeoutMs / 1000)} 秒たっても返事がありません`
+        : "Gemini につながりません。インターネット接続を確認してください");
+      err.transient = true;
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function modelLabel(code) {
+    return GEMINI_MODELS.find((m) => m.code === code)?.label.split(" — ")[0] ?? code;
+  }
+
+  // 混んでいる（503 など）・返事がないときは、少し待って同じモデルでもう1回。
+  // それでもだめなら（fallback のとき）軽いモデルで答える。回数制限（429）やキーの間違いはやり直さない
+  async function askGemini(text, images, { timeoutMs = limits.timeoutMs, fallback = true } = {}) {
     const parts = [{ text }, ...images.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: toJpegBase64(img) } }))];
-    const res = await fetch(`${GEMINI_ENDPOINT}${encodeURIComponent(settings.geminiModel)}:generateContent`, {
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+    });
+    const chosen = settings.geminiModel;
+    const alt = FALLBACK_MODELS.find((m) => m !== chosen);
+    const tries = fallback && alt ? [chosen, chosen, alt] : [chosen, chosen];
+    let lastErr;
+    for (let i = 0; i < tries.length; i++) {
+      try {
+        const answer = await postGemini(tries[i], body, timeoutMs);
+        if (tries[i] !== chosen) notice(`${modelLabel(chosen)} が混んでいたので、${modelLabel(tries[i])} で答えました`);
+        return answer;
+      } catch (e) {
+        if (!e.transient) throw e;
+        lastErr = e;
+        if (i === tries.length - 1) break;
+        notice(tries[i + 1] === chosen
+          ? `${e.message}。もう一度試しています…`
+          : `${e.message}。${modelLabel(tries[i + 1])} で試しています…`);
+        if (tries[i + 1] === chosen) await new Promise((r) => setTimeout(r, limits.retryWaitMs));
+      }
+    }
+    throw lastErr;
+  }
+
+  async function postGemini(model, body, timeoutMs) {
+    const res = await fetchWithTimeout(`${GEMINI_ENDPOINT}${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": settings.geminiKey },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
-        contents: [{ role: "user", parts }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-      }),
-    });
+      body,
+    }, timeoutMs);
     if (!res.ok) {
       const body = await res.text();
-      if (res.status === 429) throw new Error("Gemini の無料枠の回数制限に達しました。しばらく待ってからお試しください");
+      if (res.status === 429) {
+        const sec = Number(body.match(/"retryDelay"\s*:\s*"(\d+)/)?.[1]) || RATE_LIMIT_WAIT_SEC;
+        const err = new Error("Gemini の無料枠の回数制限に達しました");
+        err.retryMs = (sec + 1) * 1000;
+        throw err;
+      }
       if (res.status === 400 && /API key/i.test(body)) throw new Error("APIキーが正しくないようです。AI 設定を確認してください");
+      if (res.status === 404 && /no longer available/i.test(body)) {
+        throw new Error(`モデル「${model}」は、新しく使い始める人には提供されていません。AI 設定のモデルのメニューから別のモデルを選んでください`);
+      }
       if (res.status === 404 || /model name format/i.test(body)) {
-        throw new Error(`モデル「${settings.geminiModel}」が見つかりません。AI 設定のモデル欄で候補から選んでください（例: gemini-3.5-flash-lite）`);
+        throw new Error(`モデル「${model}」が見つかりません。AI 設定のモデルのメニューから別のモデルを選んでください`);
+      }
+      if (res.status >= 500) {
+        const err = new Error(`Gemini が混み合っています（${res.status}）`);
+        err.transient = true;
+        throw err;
       }
       throw new Error(`Gemini API エラー（${res.status}）: ${body.slice(0, 160)}`);
     }
@@ -141,12 +254,12 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
 
   // ─── 共通 ───────────────────────────────────
   // images: 一緒に渡す画像（キャンバス）の配列。文中で「画像1」「画像2」と順番どおりに呼ぶ
-  async function ask(text, images, schema) {
+  async function ask(text, images, schema, geminiOpts = {}) {
     if (!enabled()) throw new Error("AI が OFF です。「🤖 AI」から設定してください");
     await reserve();
     const raw = settings.provider === "builtin"
       ? await askBuiltin(text, images, schema)
-      : await askGemini(`${text}\n\n次の JSON スキーマに合う JSON だけを返してください:\n${JSON.stringify(schema)}`, images);
+      : await askGemini(`${text}\n\n次の JSON スキーマに合う JSON だけを返してください:\n${JSON.stringify(schema)}`, images, geminiOpts);
     return parseJson(raw);
   }
 
@@ -213,6 +326,9 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   // 「[30]の「セルを実行」」のような番号札の番号は、利用者には意味がないので消す。
   // コードの「nums[0]」のような添字は消さない（直前が文の区切りや空白のときだけ番号札とみなす）
   const dropTagNumbers = (s) => s.replace(/(^|[\s、。「『（(])[\[［]\d+[\]］]\s*の?/g, "$1").trim();
+  // 「［アイコン］」は AI に見せる番号札の文字で、利用者には意味がないので言い換える
+  const ICON_TAG = /[「『]?[\[［【]\s*アイコン\s*[\]］】][」』]?(?:の?ボタン)?/g;
+  const dropIconTag = (s) => s.replace(ICON_TAG, "光っているアイコン");
 
   // ─── 画面を見て次の一手を答える ─────────────────
   // 場所は「番号札（文字認識で見つけた画面上の文字）から選ぶ」形で答えさせる。
@@ -221,9 +337,12 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
   const COACH_SCHEMA = {
     type: "object",
     properties: {
-      current_done: { type: "string", enum: ["yes", "no", "none"] },
+      current_done: { type: "string", enum: ["yes", "no", "unsure", "none"] },
+      evidence: { type: "string" },
       status: { type: "string", enum: ["next", "done", "unsure"] },
       say: { type: "string" },
+      done_when: { type: "string" },
+      done_text: { type: "string" },
       target_id: { type: "integer" },
       target_text: { type: "string" },
       box: { type: "array", items: { type: "number" } },
@@ -232,7 +351,7 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
       hint: { type: "string" },
       reason: { type: "string" },
     },
-    required: ["current_done", "status", "say", "target_id", "target_text", "input_text", "teach", "hint", "reason"],
+    required: ["current_done", "evidence", "status", "say", "done_when", "done_text", "target_id", "target_text", "input_text", "teach", "hint", "reason"],
   };
 
   // AI が答えた [ymin, xmin, ymax, xmax]（0〜1000）を、画面に対する割合の枠にする。おかしな値なら null
@@ -253,8 +372,12 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
       `[${it.id}] ${it.text} (${Math.round(((it.x0 + it.x1) / 2) * 100)}%, ${Math.round(((it.y0 + it.y1) / 2) * 100)}%)`).join("\n");
     const images = c.before ? [c.before, c.image] : [c.image];
     const nowName = c.before ? "画像2" : "画像1";
+    // 小さな変化が縮小画像で見えなくならないよう、変わった部分の拡大も渡す（内蔵AIは画像が多いと迷うので Gemini だけ）
+    const crops = settings.provider === "gemini" ? c.change?.crops : null;
+    if (crops) images.push(crops.before, crops.after);
     const change = c.before ? `
 画像1は「いま案内中の手順」を出したときの画面、${nowName}はいまの画面です（${nowName}だけに番号札を付けています）。
+${crops ? "画像3と画像4は、変わった部分を拡大したものです（画像3が前、画像4がいま）。細い線や小さな文字はここで確かめてください。\n" : ""}${c.change ? `前後の画面を機械的に比べた結果: ${c.change.real ? "カーソルより大きな変化あり" : c.change.any ? "カーソル程度の小さな変化だけ" : "変化なし"}\n` : ""}この手順の完了の目印: ${c.doneWhen || "（指定なし。手順の内容から判断する）"}
 その間に新しく現れた文字: ${c.appeared.join("、") || "（なし）"}
 その間に消えた文字: ${c.disappeared.join("、") || "（なし）"}
 ` : `
@@ -264,22 +387,27 @@ ${nowName}はいまの画面です。`;
 これまでに終わった手順:
 ${c.done.map((d, i) => `${i + 1}. ${d}`).join("\n") || "（なし）"}
 いま案内中の手順: ${c.current ?? "（なし。最初の一手を考えてください）"}
-${change}
+${c.notOnScreen?.length ? `注意: さっき答えた「${c.notOnScreen.join("」「")}」は画面に見つかりません。画面の番号札にある名前で一手を答えてください。メニューが閉じているなら、先に開く操作を答えてください。\n` : ""}${c.repeated ? `注意: さっき「${c.repeated}」と答えましたが、これは終わった手順です。同じ手順は出さず、その次の一手を答えてください。やりたいことがもう達成できていれば status を "done" にしてください。\n` : ""}${change}
 ${nowName}の画面上の文字に赤い番号札を付けました。文字のないアイコンだけのボタン（ツールバーなど）にも、
 「［アイコン］」と書いた番号札を付けています。アイコンの札は、画像でアイコンの形を見て選んでください。
 番号札の一覧（文字と、画面の左上を0%・右下を100%としたときの中心の位置）:
 ${list || "（文字が見つかりませんでした）"}
 
 次を JSON で答えてください。
-- current_done: 「いま案内中の手順」が済んでいれば "yes"、まだなら "no"、案内中の手順がなければ "none"。
-  クリックや入力の瞬間は画像に写らないので、その「結果」で判断する（タブやメニューが開いた、文字が入った、
-  新しいボタンやタブが現れた、など）。画面が手順の目的に沿って変わっていれば "yes"。
-  はっきり失敗している（何も変わっていない、違う画面に行った）ときだけ "no"。迷ったら "yes"
+- current_done: 「いま案内中の手順」の判定。案内中の手順がなければ "none"。クリックや入力の瞬間は写らないので、結果で判断する。
+  "yes": 画面が手順の目的に沿って変わっている（完了の目印は参考で、そのとおりでなくてもよい）。
+  この手順の先の段階まで進んでいるときも "yes"（メニューは選ぶと閉じるので、メニューが写っていなくても結果が出ていればよい）。迷ったら "yes"
+  "no": 手順に関係する変化がまったくない、または明らかに違うことをしている
+  "unsure": 画面から判断する材料がない
+- evidence: current_done の根拠を、前後の画面で「どこの何がどう変わったか」で短く（例: グラフの点の上に右上がりの直線が増えた）
 - status: やりたいことが達成できていれば "done"、次の一手を示せるなら "next"、画面から判断できないなら "unsure"。
-  達成できたかは「これまでに終わった手順」といまの画面で判断する。やりたいことに書かれていない作業を足さない
+  "done" は、やりたいことの最終結果がいまの画面に実際に見えるときだけ（例:「近似直線を引きたい」なら、グラフの上に直線が見える）。
+  手順を全部終えたはず、という理由では "done" にしない。やりたいことに書かれていない作業を足さない
   （例:「セルを実行したい」なら、セルを1回実行できた時点で done。セルの中身が空でもよい）
-- say: 次にやる一手を1文で（例:「上の『挿入』タブをクリックしてください」）。
+- say: 次にやる一手を1文で（例:「上の『挿入』タブをクリックしてください」）。クリック1回ぶんだけにする（メニューを順にたどる操作は1段ずつ分ける）。すでに済んでいる操作は出さない（開いているタブをもう一度押させない）。
   案内中の手順がまだなら、その手順のやり方を言い直す。done なら完了のひとこと
+- done_when: say の一手が済むと、画面のどこに何が見えるようになるかを1文で（例: リボンに「グラフのデザイン」タブが開く）。done なら空文字
+- done_text: say の一手を終えたあとにだけ画面に現れる文字（例: 近似曲線の書式設定）。その途中のメニュー項目や、今の画面にすでにある文字は書かない。なければ空文字
 ${INPUT_RULE}
 ${TEACH_RULE}
 - target_id: その一手で操作する場所の番号札の番号（一覧から1つ）。アイコンだけのボタンなら「［アイコン］」の札から選ぶ。
@@ -291,13 +419,16 @@ ${TEACH_RULE}
 ルール: 一度に1つの操作だけ。メニュー名やボタン名を推測で作らない。
 ${TEACHER}
 「これまでに終わった手順」と同じ手順をくり返させない（同じ手順に戻りそうなら、やりたいことがもう達成できているかを考え直す）。
-say に番号札の番号（[12] など）は書かない。`;
+say に番号札の番号（[12] など）は書かない。「［アイコン］」という札の文字も書かず、形や役割で呼ぶ（例: 虫眼鏡のアイコン）。`;
     const r = await ask(text, images, COACH_SCHEMA);
     const id = Number(r.target_id);
     return {
       currentDone: { yes: true, no: false }[r.current_done] ?? null,
+      evidence: str(r.evidence, 120),
+      doneWhen: str(r.done_when, 120),
+      doneText: str(r.done_text, 30),
       status: ["next", "done", "unsure"].includes(r.status) ? r.status : "unsure",
-      say: dropTagNumbers(str(r.say)),
+      say: dropIconTag(dropTagNumbers(str(r.say))),
       targetId: c.items.some((it) => it.id === id) ? id : null,
       targetText: str(r.target_text, 40),
       box: toBox(r.box),
@@ -306,6 +437,74 @@ say に番号札の番号（[12] など）は書かない。`;
       hint: str(r.hint, 200),
       reason: str(r.reason),
     };
+  }
+
+  // ─── 最初に全体の手順を立てる ─────────────────────
+  const PLAN_MAX_STEPS = 12;
+  const PLAN_SCHEMA = {
+    type: "object",
+    properties: {
+      app: { type: "string" },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { do: { type: "string" }, where: { type: "string" }, result: { type: "string" }, target: { type: "string" }, appears: { type: "string" }, input: { type: "string" } },
+          required: ["do", "where", "result", "target", "appears", "input"],
+        },
+      },
+    },
+    required: ["app", "steps"],
+  };
+
+  // c: { goal, app, image（いまの画面）, items（画面の文字の番号札） }。
+  // 返り値: { app（AI が画面から判断したソフト名）, steps: [{ do, where, result, target, appears, input }] }（立てられなければ steps は空）
+  async function planCoach(c) {
+    const words = c.items.filter((it) => !it.icon).map((it) => it.text).join(" / ");
+    const text = `アプリ（共有中のウインドウ名）: ${c.app || "不明"}
+やりたいこと: ${c.goal}
+画像はいまの画面です。画面上の文字: ${words || "（文字が見つかりませんでした）"}
+
+やりたいことを終えるまでの全手順を、いまの画面から順番に考えて JSON で答えてください。
+- app: 画面から判断した操作対象のソフトの名前（例: Mac の Excel）
+- steps: 手順の配列（${PLAN_MAX_STEPS}個まで）。各手順は次の項目を持つ
+  do: クリック1回ぶんの操作を、初めて使う人が迷わないように1文で。押すものの名前は「」で囲み、「〜してください」で終える。
+    メニューを順にたどる操作は1段ずつ別の手順に分ける
+    （悪い例: グラフを設定する／「グラフ要素を追加」→「近似曲線」→「線形」　良い例: 「グラフ要素を追加」をクリックしてください）
+  where: それが画面のどのあたりにあるか（例: 画面上部のリボンの左端、開いたメニューの下のほう）
+  result: その操作のあと、画面のどこに何が見えるようになるか
+  target: その操作で押すボタンやメニューの、画面の表記そのままの文字（例: 挿入）。文字のない場所なら空文字
+  appears: その操作のあとにだけ画面に現れる文字（例: 近似曲線の書式設定）。なければ空文字
+  input: その操作で入力する文字や数式。入力しないなら空文字
+ルール: いまの画面ですでに済んでいる操作は含めない。同じ操作を2回書かない。範囲の選択など、必要な準備の操作は省かない。やりたいことに書かれていない作業を足さない。
+そのソフトの実際のメニュー名やボタン名を使う。名前に自信がないときは、名前を作らず「〜のボタン」と役割で書く。`;
+    const r = await ask(text, c.image ? [c.image] : [], PLAN_SCHEMA);
+    if (!Array.isArray(r.steps)) return { app: str(r.app, 30), steps: [] };
+    return { app: str(r.app, 30), steps: tidyPlan(r.steps.map((s) => ({
+      do: dropIconTag(str(s?.do, 120)), where: str(s?.where, 80), result: str(s?.result, 120),
+      target: str(s?.target, 40).search(ICON_TAG) >= 0 ? "" : str(s?.target, 40), appears: str(s?.appears, 40), input: block(s?.input),
+    })).filter((s) => s.do)) };
+  }
+
+  // 軽いモデルの計画は手順がまとまりがちなので、こちらで整える:
+  // 「A」→「B」のようにつないだ手順は1段ずつに分け、同じ手順のくり返しは除く
+  function tidyPlan(steps) {
+    const out = [];
+    const keyOf = (s) => s.do.replace(/[\s、。・「」『』（）()]/g, "");
+    for (const s of steps.flatMap(splitStep)) {
+      const prev = out[out.length - 1];
+      if (out.some((p) => keyOf(p) === keyOf(s)) || (prev?.target && prev.target === s.target)) continue;
+      out.push(s);
+    }
+    return out.slice(0, PLAN_MAX_STEPS);
+  }
+  function splitStep(s) {
+    const names = [...s.do.matchAll(/[「『]([^」』]+)[」』]/g)].map((m) => m[1].trim());
+    if (names.length < 2 || !/→|⇒|＞|>|›|»/.test(s.do)) return [s];
+    return names.map((name, i) => {
+      const last = i === names.length - 1;
+      return { do: `「${name}」をクリックしてください`, where: i === 0 ? s.where : "", result: last ? s.result : "", target: name, appears: last ? s.appears : "", input: last ? s.input : "" };
+    });
   }
 
   // ─── Office アドイン用: 文書の状態（文章）を見て次の一手を答える ─────
@@ -342,9 +541,9 @@ ${c.now}
 
 次を JSON で答えてください。
 - current_done: 「いま案内中の手順」が済んでいれば "yes"、まだなら "no"、案内中の手順がなければ "none"。
-  文書の状態の変化で判断する（選択範囲が変わった、値や書式が変わった、図形が増えた、など）。
-  リボンのタブを開くだけ・メニューを開くだけの手順は文書が変わらないので、次の手順の結果が出ていれば "yes" にする。迷ったら "yes"
-- status: やりたいことが全部終わっていれば "done"、次の一手を示せるなら "next"、判断できないなら "unsure"
+  文書の状態の変化で判断する（選択範囲が変わった、値や書式が変わった、図形や近似曲線が増えた、など）。
+  リボンのタブを開くだけ・メニューを開くだけの手順は文書が変わらないので、次の手順の結果が出ていれば "yes" にする
+- status: やりたいことの最終結果が文書の状態に見えていれば "done"（例: 近似直線なら、グラフの近似曲線に線形がある）、次の一手を示せるなら "next"、判断できないなら "unsure"
 - say: 次にやる一手を1文で（例:「『ホーム』タブの『罫線』の ▼ から『格子』を選んでください」）。done なら完了のひとこと
 - path: その一手で押すリボンの道順を、画面の表記のまま順番に（例: ["ホーム", "罫線", "格子"]）。リボンを使わない操作なら空の配列
 - doc_target: その一手で操作する文書の中の場所。${c.targetKind}。なければ空文字
@@ -365,6 +564,52 @@ ${TEACHER}`;
       hint: str(r.hint, 200),
       reason: str(r.reason),
     };
+  }
+
+  // ─── Office アドイン用: 最初に全体の手順を立てる ─────
+  // 1つの手順は「文書が1回変わる操作」（リボンの道順つき）。あとは文書の状態に現れる言葉（state）で、AI を使わずに確かめる
+  const OFFICE_PLAN_SCHEMA = {
+    type: "object",
+    properties: {
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            do: { type: "string" }, where: { type: "string" }, path: { type: "array", items: { type: "string" } },
+            doc_target: { type: "string" }, state_check: { type: "array", items: { type: "string" } }, input: { type: "string" },
+          },
+          required: ["do", "where", "path", "doc_target", "state_check", "input"],
+        },
+      },
+    },
+    required: ["steps"],
+  };
+
+  // c: { host, goal, now（いまの文書の状態の文章）, targetKind }。返り値: [{ do, where, path, doc, state, input }]
+  async function planOffice(c) {
+    const text = `アプリ: Mac の ${c.host}（日本語版）。利用者は ${c.host} の初心者です。
+やりたいこと: ${c.goal}
+いまの文書の状態（${c.host} から直接読んだ正確な情報。この書き方に注意）:
+${c.now}
+
+やりたいことを終えるまでの全手順を、いまの状態から順番に考えて JSON で答えてください。
+- steps: 手順の配列（${PLAN_MAX_STEPS}個まで）。1つの手順は「文書が1回変わる操作」にする（タブを開くだけの手順は作らず、次の操作の道順に含める）。各手順は次の項目を持つ
+  do: 初めて使う人が迷わない1文。押すものの名前は「」で囲み、「〜してください」で終える
+  where: それが画面のどのあたりにあるか
+  path: 押すリボンの道順を、画面の表記のまま順番に（例: ["ホーム", "罫線", "格子"]）。リボンを使わない操作なら空の配列
+  doc_target: その手順で操作する文書の中の場所。${c.targetKind}。なければ空文字
+  state_check: その手順が済むと「文書の状態」に新しく現れる言葉。上の状態と同じ書き方で、短く（例: Linear、InsideHorizontal、太字=true）。分からなければ空の配列
+  input: その手順で入力する文字や数式。入力しないなら空文字
+ルール: いまの状態ですでに済んでいる操作は含めない。同じ操作を2回書かない。Mac の ${c.host} にないボタン名を作らない。`;
+    const r = await ask(text, [], OFFICE_PLAN_SCHEMA);
+    if (!Array.isArray(r.steps)) return [];
+    const list = (v, max) => (Array.isArray(v) ? v.map((x) => str(x, max)).filter(Boolean).slice(0, 6) : []);
+    const seen = new Set();
+    return r.steps.map((p) => ({
+      do: str(p?.do, 160), where: str(p?.where, 80), path: list(p?.path, 30), doc: str(p?.doc_target, 60),
+      state: list(p?.state_check, 40), input: block(p?.input),
+    })).filter((p) => p.do && !seen.has(p.do) && seen.add(p.do)).slice(0, PLAN_MAX_STEPS);
   }
 
   // ─── 学ぶための補助 ─────────────────────────────
@@ -409,16 +654,18 @@ JSON で答えてください。answer: 答え（3〜5文。必要なら短い�
   }
 
   // 接続テスト（画面の画像は送らない）
+  // 選んだモデルを確かめたいので、別のモデルには切り替えない
   async function ping() {
     const r = await ask('動作確認です。{"ok": true} を返してください。', [],
-      { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] });
+      { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] },
+      { timeoutMs: limits.pingTimeoutMs, fallback: false });
     if (r.ok !== true) throw new Error("AI の答えが想定と違いました");
   }
 
   return {
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
-    coach, coachOffice, explainCode, answerQuestion, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
-    DEFAULT_GEMINI_MODEL, normalizeModel,
+    coach, planCoach, coachOffice, planOffice, explainCode, answerQuestion, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
+    retryDelay, limits, setNotice, DEFAULT_GEMINI_MODEL, GEMINI_MODELS, normalizeModel, listGeminiModels, fillModelSelect,
   };
 })();

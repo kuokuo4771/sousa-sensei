@@ -1,9 +1,27 @@
 // そうさ先生: 手順の表示と進め方（レッスンの読み込み・次へ・戻る・できた？・記録）
 
 // ─── Lessons UI ──────────────────────────────────────
-for (const [id, lesson] of Object.entries(LESSONS)) {
-  el.lessonSelect.append(new Option(lesson.name, id));
+// テンプレ（アプリごと）と PowerPoint のレッスンを、まとめてメニューに並べる。テンプレを保存・読み込みしたら作り直す
+function fillLessonSelect() {
+  const group = (label, options) => {
+    const g = document.createElement("optgroup");
+    g.label = label;
+    g.append(...options);
+    return g;
+  };
+  const byApp = new Map();
+  for (const t of Templates.all()) {
+    const app = t.app || "どのソフトでも";
+    if (!byApp.has(app)) byApp.set(app, []);
+    byApp.get(app).push(new Option(`📘 ${t.title}${t.sample ? "（見本）" : ""}`, `tpl:${t.id}`));
+  }
+  el.lessonSelect.replaceChildren(
+    new Option("（選ばない）", "idle"),
+    ...[...byApp].map(([app, options]) => group(`テンプレ: ${app}`, options)),
+    group("PowerPoint のレッスン", fixedLessonIds().map((id) => new Option(LESSONS[id].name, id))),
+  );
 }
+fillLessonSelect();
 
 function lesson() { return LESSONS[state.lessonId]; }
 function currentStep() { return lesson().steps[state.step]; }
@@ -12,41 +30,60 @@ function render() {
   const L = lesson();
   const total = L.steps.length;
   // おまかせ（L.coach）は手順が AI によって1つずつ増えるので、全体の数は分からない
-  const finished = L.coach ? !!L.finished : state.step >= total;
+  const finished = L.coach ? !!L.finished : !L.idle && state.step >= total;
   const done = L.coach ? coach.done.length : Math.min(state.step, total);
 
-  el.tutorLessonName.textContent = `${L.coach ? "おまかせ" : "レッスン"}: ${L.name}`;
-  el.progressCount.textContent = L.coach ? `${done} 完了` : `${done} / ${total}`;
-  el.progressFill.style.width = `${(finished ? 1 : L.coach ? done / (done + 1) : done / total) * 100}%`;
-  el.progressTitle.textContent = finished ? "完了" : L.coach ? `${state.step + 1} 手目` : `ステップ ${state.step + 1}`;
+  el.tutorLessonName.textContent = L.idle ? "" : `${L.coach || L.planned ? "おまかせ" : "レッスン"}: ${L.name}`;
+  el.progressCount.textContent = L.idle ? "" : L.coach ? `${done} 完了` : `${done} / ${total}`;
+  el.progressFill.style.width = `${(L.idle ? 0 : finished ? 1 : L.coach ? done / (done + 1) : done / total) * 100}%`;
+  el.progressTitle.textContent = L.idle ? "まだ始まっていません" : finished ? "完了" : L.coach ? `${state.step + 1} 手目` : `ステップ ${state.step + 1}`;
 
   el.stepCard.hidden = finished;
   el.doneCard.hidden = !finished;
-  if (!finished) {
+  if (finished) {
+    el.doneTitle.textContent = L.coach || L.planned ? "できました！" : "レッスン完了！";
+    el.doneNote.textContent = L.coach || L.planned
+      ? "お疲れさまでした。「🧭 新しくはじめる」で次のやりたいことを案内します。"
+      : "お疲れさまでした。「次のレッスン →」で続けられます。";
+  } else if (L.idle) {
+    el.stepNum.textContent = "はじめに";
+    el.stepText.textContent = "やりたいことを上の欄に書いて「開始」を押してください";
+    el.stepHint.textContent = AI.enabled()
+      ? "例: 表を入れたい、背景を消したい、セルを実行したい。どのソフトでも案内します。"
+      : "AI の設定（⚙ 設定 → 🤖 AI）が必要です。AI なしで試すなら、下の「PowerPoint のレッスン」から選べます。";
+    el.inputBox.hidden = true;
+    el.checkChip.hidden = true;
+  } else {
     const step = currentStep();
     el.stepNum.textContent = L.coach ? `STEP ${state.step + 1}` : `STEP ${state.step + 1} / ${total}`;
     el.stepText.textContent = step?.text ?? "🧭 AI が画面を見て、最初の一手を考えています…";
     el.stepHint.textContent = step?.hint ?? "";
     el.inputBox.hidden = !step?.input;
     el.inputText.textContent = step?.input ?? "";
-    el.expectChip.textContent = L.coach ? "🧭 画面が変わるたびに AI ができたかを確かめます" : EXPECT_LABEL[step.expect];
+    el.expectChip.textContent = L.coach ? "🧭 画面が変わるたびに AI ができたかを確かめます"
+      : L.planned ? "📝 計画どおりに、画面の文字と変化で確かめます" : EXPECT_LABEL[step.expect];
     const useOcr = ocr.on && !!step?.check;
     el.checkChip.hidden = !useOcr;
     if (useOcr) el.checkChip.textContent = `🔤 自動確認: ${step.when}`;
   }
+  el.expectChip.hidden = !!L.idle;
+  el.saveTplBtn.hidden = !(finished && L.planned && coach.source === "ai");
   el.backBtn.disabled = state.step === 0 || !!L.coach;
-  el.nextBtn.textContent = finished ? "次のレッスン →" : "次へ →";
+  el.restartBtn.disabled = !!L.idle;
+  el.nextBtn.disabled = !!L.idle;
+  el.nextBtn.textContent = !finished ? "次へ →" : L.coach || L.planned ? "🧭 新しくはじめる" : "次のレッスン →";
   renderTarget();
+  renderPlan();
 }
 
 // 「次のレッスン」で巡回する決まったレッスン（おまかせは含めない）
-function fixedLessonIds() { return Object.keys(LESSONS).filter((id) => !LESSONS[id].coach); }
+function fixedLessonIds() { return Object.keys(LESSONS).filter((id) => !LESSONS[id].coach && !LESSONS[id].idle && !LESSONS[id].planned); }
 
 function loadLesson(id) {
   if (LESSONS[id]?.coach) { startCoach(coach.goal); return; }
   state.lessonId = id;
-  el.lessonSelect.value = id;
-  addLog(`レッスン開始: ${lesson().name}`);
+  el.lessonSelect.value = LESSONS[id].planned ? "idle" : id;
+  if (!lesson().idle) addLog(`レッスン開始: ${lesson().name}`);
   goTo(0);
 }
 
@@ -56,6 +93,9 @@ function goTo(step, knownRead = null, cheer = false) {
   state.step = Math.max(0, Math.min(step, lesson().steps.length));
   state.stepToken++;
   state.lastChangeAt = Date.now();
+  state.plannedChanged = false;
+  state.noAskUntil = 0;
+  coach.fineBase = null;
   state.prevStartRead = state.startRead;
   state.startRead = null;
   const next = currentStep();
@@ -66,12 +106,14 @@ function goTo(step, knownRead = null, cheer = false) {
   resetBase();
   render();
   if (!next) {
-    addLog("レッスン完了 🎉");
-    speak("レッスン完了です。お疲れさまでした。");
+    if (!lesson().idle) {
+      addLog("レッスン完了 🎉");
+      speak("レッスン完了です。お疲れさまでした。");
+    }
   } else {
     speak(`${cheer ? "できました。" : ""}ステップ${state.step + 1}。${next.text}`);
   }
-  if (watching() && !state.paused) setWatch("見守り中 — 操作してみてください");
+  if (watching() && !state.paused) setWatch(lesson().idle ? IDLE_WATCH : "見守り中 — 操作してみてください");
   readStepStart(knownRead);
 }
 
@@ -143,11 +185,20 @@ el.yesBtn.addEventListener("click", () => {
 });
 el.notYetBtn.addEventListener("click", () => {
   hideConfirm();
+  state.noAskUntil = Date.now() + PLANNED_REASK_MS;
   addLog("まだ — 引き続き見守ります");
 });
 
 // ─── Buttons ─────────────────────────────────────────
-el.lessonSelect.addEventListener("change", (e) => loadLesson(e.target.value));
+el.lessonSelect.addEventListener("change", (e) => {
+  const v = e.target.value;
+  if (v.startsWith("tpl:")) {
+    const t = Templates.get(v.slice(4));
+    if (t) startCoach(t.title, t);
+    return;
+  }
+  loadLesson(v);
+});
 el.backBtn.addEventListener("click", () => goTo(state.step - 1));
 el.restartBtn.addEventListener("click", () => loadLesson(state.lessonId));
 el.nextBtn.addEventListener("click", () => {
@@ -156,7 +207,13 @@ el.nextBtn.addEventListener("click", () => {
     coachManualDone();
     return;
   }
-  if (L.coach || state.step >= L.steps.length) {
+  if (L.coach || (L.planned && state.step >= L.steps.length)) {   // おまかせが終わったら、次のやりたいことを書いてもらう
+    el.goalInline.value = "";
+    loadLesson("idle");
+    el.goalInline.focus();
+    return;
+  }
+  if (state.step >= L.steps.length) {
     const ids = fixedLessonIds();
     loadLesson(ids[(ids.indexOf(state.lessonId) + 1) % ids.length]);
     return;

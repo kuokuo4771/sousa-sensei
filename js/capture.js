@@ -2,10 +2,25 @@
 
 // ─── Screen capture ──────────────────────────────────
 el.startCaptureBtn.addEventListener("click", quickStart);
+el.shareTopBtn.addEventListener("click", quickStart);
 el.stopCaptureBtn.addEventListener("click", stopCapture);
 el.pauseBtn.addEventListener("click", togglePause);
 
-// 「はじめる」1回で、画面共有・ミニ窓・PowerPoint を前面へ、までを済ませる。
+// 画面共有のいまの状態を、上のバーの表示とボタンに反映する（共有していないときだけ「共有する」を出す）
+function renderShareControls() {
+  const sharing = !!state.stream;
+  el.captureChip.textContent = sharing
+    ? (state.paused ? "画面を共有中（見守りは一時停止）" : "画面を共有中")
+    : web.tabId ? "🌐 Web アプリにつないでいます" : "画面を共有していません";
+  el.captureChip.classList.toggle("on", sharing || !!web.tabId);
+  el.shareTopBtn.hidden = sharing;
+  el.pauseBtn.hidden = !sharing;
+  el.stopCaptureBtn.hidden = !sharing;
+  el.pauseBtn.textContent = state.paused ? "▶ 見守りを再開" : "⏸ 見守りを一時停止";
+  el.captureFoot.hidden = !sharing;
+}
+
+// 共有ボタン1回で、画面共有・ミニ窓・教わりたいソフトを前面へ、までを済ませる。
 // 画面共有とミニ窓はどちらも「ボタンを押した直後」にしか開けないので、待たずに続けて呼ぶ
 async function quickStart() {
   const sharing = requestShare();
@@ -22,7 +37,7 @@ async function quickStart() {
   } catch (e) {
     if (pipOpened && await pipOpened) state.pip?.close();   // 共有をやめたらミニ窓も閉じて元に戻す
     const msg = e.name === "NotAllowedError"
-      ? "共有がキャンセルされたか、macOS の画面収録が許可されていません。"
+      ? "共有がキャンセルされたか、画面収録が許可されていません。Mac では システム設定 → プライバシーとセキュリティ → 画面収録 で Chrome を許可し、Chrome を開き直してください。"
       : `${e.name}: ${e.message}`;
     setWatch(msg, "small");
     return;
@@ -65,10 +80,7 @@ async function startCapture(stream) {
     el.captureVideo.srcObject = stream;
     el.captureVideo.hidden = false;
     el.emptyState.hidden = true;
-    el.stopCaptureBtn.hidden = false;
-    el.pauseBtn.hidden = false;
-    el.captureChip.textContent = "共有中";
-    el.captureChip.classList.add("on");
+    renderShareControls();
     await el.captureVideo.play();
     state.prevGray = null;
     state.baseGray = null;
@@ -102,10 +114,8 @@ function stopCapture() {
   el.captureVideo.srcObject = null;
   el.captureVideo.hidden = true;
   el.emptyState.hidden = false;
-  el.stopCaptureBtn.hidden = true;
-  el.pauseBtn.hidden = true;
-  el.captureChip.textContent = "未共有";
-  el.captureChip.classList.remove("on");
+  state.paused = false;
+  renderShareControls();
   hideConfirm();
   state.target = null;
   renderTarget();
@@ -115,7 +125,7 @@ function stopCapture() {
 
 function togglePause() {
   state.paused = !state.paused;
-  el.pauseBtn.textContent = state.paused ? "▶ 再開" : "⏸ 一時停止";
+  renderShareControls();
   if (state.paused) {
     clearSchedule();
     setStatus("一時停止");

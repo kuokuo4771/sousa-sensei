@@ -2,6 +2,7 @@
 
 // ─── Boot ────────────────────────────────────────────
 loadLesson(state.lessonId);
+renderShareControls();
 
 // URL の末尾に「?test」を付けて開くと、自動テスト（js/selftest.js）を読み込んで実行する
 if (new URLSearchParams(location.search).has("test")) {

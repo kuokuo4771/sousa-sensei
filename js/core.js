@@ -12,12 +12,14 @@ const THRESHOLD = 0.05;           // 確定画面との差がこれ以上なら�
 const BAND_MEDIUM = 3, BAND_LARGE = 20;
 const INTERVAL_MS = 1500;
 const MAX_LOG = 8;
+const PLAN_READ = { keepShot: true, icons: false };   // 計画の手順の文字認識（タブの見た目を比べるので画面も残す）
+const IDLE_WATCH = "画面を見ています。やりたいことを書くと案内を始めます。";
 
 function bandOf(ratio) { return ratio >= BAND_LARGE ? 3 : ratio >= BAND_MEDIUM ? 2 : 1; }
 
 // ─── State ────────────────────────────────────────────
 const state = {
-  lessonId: "first-slide",
+  lessonId: "idle",
   step: 0,
   stream: null,
   imageCapture: null,
@@ -36,6 +38,8 @@ const state = {
   surface: null,        // 共有している面: monitor（画面全体）/ window（ウインドウ）/ browser（タブ）
   lastChangeAt: 0,      // 最後に画面が変わった（または新しい手順を出した）時刻
   stuckToken: -1,       // 「しばらく変化がない」助け舟をどのステップで出したか（1ステップ1回まで）
+  noAskUntil: 0,        // 「まだ」と答えたあと、この時刻までは「できた？」を聞き直さない
+  plannedChanged: false, // 計画の手順の間に画面が変わり、まだ「できた？」を聞いていない
   target: null,         // 光らせる場所 { box: {x0,y0,x1,y1}（画面に対する割合）, name, say }
 };
 
@@ -50,7 +54,8 @@ const el = Object.fromEntries([
   "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn", "watch", "log",
   "ocrMeta", "ocrText", "backBtn", "restartBtn", "nextBtn",
   "autoBtn", "voiceBtn", "countdown", "countdownBar",
-  "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
+  "planBox", "planList", "planBtn", "tplNote", "tplNoteText", "tplAiBtn", "saveTplBtn", "tplBtn", "tplDialog", "tplList",
+  "tplText", "tplResult", "tplExport", "tplImport", "tplClose", "doneTitle", "doneNote", "loopBox", "finishBtn", "continueBtn", "shareTopBtn", "captureFoot", "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
   "aiDialog", "builtinRadio", "builtinState", "builtinPrepare", "geminiFields", "geminiKey", "geminiModel",
   "aiTestResult", "aiTest", "aiClose", "aiSave", "goalForm", "goalInline", "settingsBtn", "settingsPop",
   "webBtn", "webDialog", "webMissing", "webReady", "webTabs", "webResult", "webRefresh", "webClose", "webDisconnect",
@@ -60,8 +65,9 @@ const el = Object.fromEntries([
 // ─── 設定（このブラウザに保存） ───────────────────────
 //   autoNext: 「できた？」のあと AUTO_NEXT_SEC 秒で自動的に次へ進む（初期値は OFF。確認は必ず出す）
 //   voice   : 次の手順や「できましたか？」を読み上げる
+//   plan    : おまかせの最初に AI に全体の手順を立てさせ、あとはその計画どおりに AI なしで進める（実験中）
 const AUTO_NEXT_SEC = 4;
-const prefs = { autoNext: false, voice: true };
+const prefs = { autoNext: false, voice: true, plan: true };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem("slideSenseiPrefs") || "{}")); } catch { /* 保存できない環境では初期値のまま */ }
 function savePrefs() {
   try { localStorage.setItem("slideSenseiPrefs", JSON.stringify(prefs)); } catch { /* 同上 */ }
@@ -69,12 +75,18 @@ function savePrefs() {
 function renderPrefs() {
   el.autoBtn.textContent = `⏩ 自動で次へ ${prefs.autoNext ? "ON" : "OFF"}`;
   el.voiceBtn.textContent = `${prefs.voice ? "🔊" : "🔈"} 音声 ${prefs.voice ? "ON" : "OFF"}`;
+  el.planBtn.textContent = `📝 手順を先に考える ${prefs.plan ? "ON" : "OFF"}`;
 }
 el.autoBtn.addEventListener("click", () => {
   prefs.autoNext = !prefs.autoNext;
   savePrefs();
   renderPrefs();
   if (!el.confirmBox.hidden) startCountdown();
+});
+el.planBtn.addEventListener("click", () => {
+  prefs.plan = !prefs.plan;
+  savePrefs();
+  renderPrefs();
 });
 el.voiceBtn.addEventListener("click", () => {
   prefs.voice = !prefs.voice;

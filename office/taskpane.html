@@ -28,7 +28,7 @@
   header .ai-state { margin-left: auto; font-size: 11px; color: var(--ai); }
   .notice { padding: 10px; border-radius: 8px; background: var(--warn-soft); font-size: 12.5px; }
   form { display: flex; gap: 6px; }
-  input[type=text], input[type=password] { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
+  input[type=text], input[type=password], select { flex: 1; min-width: 0; padding: 8px 10px; font: inherit; font-size: 13px;
     border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--ink); }
   button { font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border);
     background: var(--panel); color: var(--ink); cursor: pointer; }
@@ -64,6 +64,14 @@
   details .fields { display: grid; gap: 6px; margin-top: 6px; }
   ul.log { list-style: none; margin: 0; padding: 0; font-size: 11.5px; color: var(--muted); }
   small { color: var(--muted); }
+  .tpl-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px;
+    background: var(--ai-soft); font-size: 12.5px; }
+  .plan ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 3px; font-size: 12.5px; }
+  .plan li.done { color: var(--muted); text-decoration: line-through; }
+  .plan li.now { font-weight: 700; }
+  textarea { width: 100%; padding: 6px 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--panel); color: var(--ink); resize: vertical; }
+  button { white-space: nowrap; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -78,10 +86,17 @@
     <input type="text" id="goalInput" autocomplete="off" placeholder="やりたいこと（例: A1〜C5 に罫線を引きたい）">
     <button class="primary" type="submit">開始</button>
   </form>
+  <select id="tplSelect" hidden></select>
+
+  <div class="tpl-note" id="tplNote" hidden>
+    <span id="tplNoteText"></span>
+    <button id="tplAiBtn" type="button">🧭 AI に考えてもらう</button>
+  </div>
 
   <div class="card" id="stepCard" hidden>
     <div class="step-num" id="stepNum"></div>
     <div class="step-text" id="stepText"></div>
+    <p class="step-hint" id="whereText" hidden></p>
     <p class="step-hint" id="stepHint">リボンで押す場所の道順です（左から順に）</p>
     <div class="path" id="pathRow" hidden></div>
     <div class="target" id="targetRow" hidden>文書の中の場所: <code id="targetText"></code><button id="showBtn">見せる</button></div>
@@ -91,7 +106,14 @@
     </div>
   </div>
 
-  <div class="card done" id="doneCard" hidden><strong>🎉 できました！</strong>やりたいことは完了です。</div>
+  <details class="card plan" id="planBox" open hidden>
+    <summary>📝 全体の手順</summary>
+    <ol id="planList"></ol>
+  </details>
+
+  <div class="card done" id="doneCard" hidden><strong>🎉 できました！</strong>やりたいことは完了です。
+    <div><button id="saveTplBtn" type="button" hidden>📘 この手順をテンプレに保存</button></div>
+  </div>
 
   <div class="ai-box" id="aiBox" hidden><p id="aiText"></p></div>
 
@@ -115,13 +137,25 @@
       <small>⚠ 無料枠では、送った内容（文書の状態の文章）が Google の製品改善に使われます。社外秘の文書では使わないでください。
         Office の中では Chrome 内蔵AI は使えません。</small>
       <label>APIキー <input type="password" id="geminiKey" autocomplete="off" spellcheck="false" placeholder="AIza…"></label>
-      <label>モデル <input type="text" id="geminiModel" spellcheck="false"></label>
+      <label>モデル <select id="geminiModel"></select></label>
+      <label><input type="checkbox" id="planOn" checked> 📝 手順を先に考える（AI は最初の1回だけ。OFF だと一手ごとに AI に聞く）</label>
       <button id="aiSave">保存</button>
       <label><input type="checkbox" id="voiceOn" checked> 案内を読み上げる</label>
     </div>
   </details>
 
+  <details>
+    <summary>📘 テンプレの書き出し・読み込み</summary>
+    <div class="fields">
+      <small>自分で保存したテンプレを書き出して、ほかの人や本体（画面共有）に渡せます。受け取ったテンプレは欄に貼り付けて「読み込む」。</small>
+      <textarea id="tplText" rows="6" spellcheck="false"></textarea>
+      <div class="row"><button id="tplExport">書き出す（コピー）</button><button id="tplImport">読み込む</button></div>
+      <small id="tplResult"></small>
+    </div>
+  </details>
+
   <script src="../js/ai.js"></script>
+  <script src="../js/templates.js"></script>
   <script src="office-host.js"></script>
   <script src="office-coach.js"></script>
 </body>

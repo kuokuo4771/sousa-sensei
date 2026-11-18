@@ -8,7 +8,7 @@ async function openAiDialog() {
   const s = AI.settings;
   for (const r of el.aiDialog.querySelectorAll("input[name=provider]")) r.checked = r.value === s.provider;
   el.geminiKey.value = s.geminiKey;
-  el.geminiModel.value = s.geminiModel || AI.DEFAULT_GEMINI_MODEL;
+  AI.fillModelSelect(el.geminiModel, s.geminiModel);
   el.aiTestResult.textContent = "";
   el.aiDialog.showModal();
   await renderBuiltinState();
@@ -57,6 +57,7 @@ el.aiSave.addEventListener("click", () => {
   }
   AI.save(next);
   renderAiButton();
+  render();
   addLog(`AI: ${AI.label()}`);
   el.aiDialog.close();
 });
@@ -64,16 +65,27 @@ el.aiSave.addEventListener("click", () => {
 // 接続テスト（画面の画像は送らない）
 el.aiTest.addEventListener("click", async () => {
   const before = { ...AI.settings };
-  AI.save(readAiForm());
+  const form = readAiForm();
+  AI.save(form);
   el.aiTestResult.textContent = "テスト中…";
+  const prevNotice = AI.setNotice((msg) => { el.aiTestResult.textContent = msg; });
   try {
     await AI.ping();
     el.aiTestResult.textContent = "✓ つながりました";
   } catch (e) {
     el.aiTestResult.textContent = `✗ ${e.message}`;
-  } finally {
-    AI.save(before);   // 保存は「保存」を押したときだけ
   }
+  // 選んだモデルが使えなくても、キーが正しければ使えるモデルをメニューに足す
+  if (form.provider === "gemini" && form.geminiKey) {
+    try {
+      await AI.listGeminiModels();
+      AI.fillModelSelect(el.geminiModel, form.geminiModel);
+    } catch (e) {
+      console.warn(e.message);
+    }
+  }
+  AI.setNotice(prevNotice);
+  AI.save(before);   // 保存は「保存」を押したときだけ
 });
 
 // ─── 🧭 AIにおまかせ の入力欄（案内パネルの中にあるので、ミニ窓からも始められる） ─────
@@ -86,6 +98,13 @@ el.goalForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const goal = el.goalInline.value.trim();
   if (!goal) { el.goalInline.focus(); return; }
+  // 合うテンプレがあれば、AI を使わずに案内する（AI が OFF でも使える）
+  const template = Templates.match(goal);
+  if (template) {
+    el.goalInline.blur();
+    startCoach(goal, template, { auto: true });
+    return;
+  }
   if (!AI.enabled()) {
     if (state.pip) showAi("AI が OFF です。ブラウザの「⚙ 設定」→「🤖 AI」から設定してください。", "error");
     else openAiDialog();
@@ -170,3 +189,62 @@ el.themeToggle.addEventListener("click", () => {
   if (state.pip) syncTheme(state.pip.document);
 });
 
+// ─── テンプレ ──────────────────────────────────────
+// 自動で選んだテンプレが違うときは、AI に計画を立ててもらう
+el.tplAiBtn.addEventListener("click", () => {
+  if (!AI.enabled()) { openAiDialog(); return; }
+  startCoach(coach.goal);
+});
+
+// AI の計画でうまくいった手順を、テンプレとして保存する（次からは AI を使わない）
+el.saveTplBtn.addEventListener("click", () => {
+  const t = Templates.save(Templates.fromScreenPlan(coach.goal, coach.planApp, coach.plan));
+  if (!t) return;
+  fillLessonSelect();
+  el.saveTplBtn.hidden = true;
+  addLog(`📘 テンプレに保存しました: ${t.title}`);
+  showAi(`📘 テンプレ「${t.title}」に保存しました。次から同じことを書くと、AI を使わずに案内します。`);
+});
+
+function renderTplList() {
+  const mine = Templates.all().filter((t) => t.id.startsWith("user-"));
+  el.tplList.replaceChildren(...mine.map((t) => {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = `📘 ${t.title}${t.app ? `（${t.app}）` : ""}`;
+    const del = document.createElement("button");
+    del.className = "btn";
+    del.type = "button";
+    del.textContent = "削除";
+    del.addEventListener("click", () => { Templates.remove(t.id); renderTplList(); fillLessonSelect(); });
+    li.append(name, del);
+    return li;
+  }));
+  if (!mine.length) el.tplList.innerHTML = "<li>保存したテンプレはまだありません。</li>";
+}
+el.tplBtn.addEventListener("click", () => {
+  el.tplResult.textContent = "";
+  renderTplList();
+  el.tplDialog.showModal();
+});
+el.tplClose.addEventListener("click", () => el.tplDialog.close());
+el.tplExport.addEventListener("click", async () => {
+  el.tplText.value = Templates.exportJson();
+  try {
+    await navigator.clipboard.writeText(el.tplText.value);
+    el.tplResult.textContent = "✓ コピーしました。送りたい相手に貼り付けて渡してください。";
+  } catch {
+    el.tplText.select();
+    el.tplResult.textContent = "欄の文字を選びました。⌘C / Ctrl+C でコピーしてください。";
+  }
+});
+el.tplImport.addEventListener("click", () => {
+  try {
+    const n = Templates.importJson(el.tplText.value);
+    el.tplResult.textContent = `✓ ${n} 個のテンプレを読み込みました。`;
+    renderTplList();
+    fillLessonSelect();
+  } catch (e) {
+    el.tplResult.textContent = `✗ ${e.message}`;
+  }
+});

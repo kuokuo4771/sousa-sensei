@@ -203,15 +203,19 @@ async function ask() {
     const images = tagImage({ source: shot, width: shot.width, height: shot.height }, items);
     const before = run.current ? run.before : null;
     const { appeared, disappeared } = textChanges(before?.texts, items);
-    const r = await AI.coach({
-      image: images.tagged, before: before?.image ?? null, appeared, disappeared, app, items,
-      goal: run.goal, done: run.done, current: run.current,
+    const change = before?.image ? compareShots(before.image, images.plain) : null;
+    const snapshot = { image: images.plain, texts: new Set(items.map((it) => norm(it.text))) };
+    const answer = await AI.coach({
+      image: images.tagged, before: before?.image ?? null, appeared, disappeared, change, app, items,
+      goal: run.goal, done: run.done, current: run.current, doneWhen: run.doneWhen,
     });
-    apply(r, items, gen, { image: images.plain, texts: new Set(items.map((it) => norm(it.text))) });
+    apply(checkDoneAnswer(answer, { doneText: run.doneText, beforeTexts: before?.texts, nowTexts: snapshot.texts }), items, gen, snapshot);
   } catch (e) {
-    if (/間をあけて|上限/.test(e.message)) {
+    const wait = AI.retryDelay(e);
+    if (wait) {
       // 呼び出し回数の制限に当たったら、少し待ってやり直す（やり直しの予約は1つだけ）
-      if (!run.retry) run.retry = setTimeout(() => { run.retry = 0; ask(); }, 4500);
+      if (e.retryMs) showAi(`${e.message}。${Math.ceil(wait / 1000)}秒後に自動でもう一度確かめます。`);
+      if (!run.retry) run.retry = setTimeout(() => { run.retry = 0; ask(); }, wait);
     } else {
       showAi(`AI に聞けませんでした: ${e.message}`, true);
     }
@@ -227,6 +231,8 @@ function apply(r, items, gen, snapshot) {
   if (run.current && r.currentDone === true) {
     completeStep();
     cheer = true;
+    // AI は「まだ」のつもりで答えているので、この答えの次の一手は使わず聞き直す
+    if (r.proved) { run.again = true; return; }
   }
   if (!run.current && r.status === "done") {
     finish(r.teach || r.say);
@@ -234,7 +240,7 @@ function apply(r, items, gen, snapshot) {
   }
   if (!run.current && r.status === "next" && r.say) {
     Object.assign(run, {
-      current: r.say, input: r.inputText ?? "", teach: r.teach ?? "", hint: r.hint ?? "", revealed: false,
+      current: r.say, doneWhen: r.doneWhen ?? "", doneText: r.doneText ?? "", input: r.inputText ?? "", teach: r.teach ?? "", hint: r.hint ?? "", revealed: false,
       before: snapshot, lastChangeAt: Date.now(), stuckShown: false,
     });
     ui.explainList.hidden = true;
@@ -287,11 +293,6 @@ function finish(summary = "") {
 }
 
 // 手順を比べるための目印。「」の中の名前（ボタン名など）があればそれで、なければ記号と空白を除いた文で比べる
-function stepKey(say) {
-  const names = [...say.matchAll(/[「『]([^」』]+)[」』]/g)].map((m) => m[1].trim()).sort();
-  return names.length ? names.join("|") : say.replace(/[\s、。・「」『』（）()]/g, "");
-}
-
 // 「できた ✓」「次へ」: AI の判定を待たずに次の一手へ
 function manualDone() {
   ui.loopBox.hidden = true;
@@ -414,7 +415,7 @@ async function renderAi() {
   ui.providerBuiltin.checked = s.provider === "builtin";
   ui.providerGemini.checked = s.provider === "gemini";
   ui.geminiKey.value = s.geminiKey;
-  ui.geminiModel.value = s.geminiModel;
+  AI.fillModelSelect(ui.geminiModel, s.geminiModel);
   const status = await AI.builtinStatus();
   ui.builtinState.textContent = {
     available: "使えます（ページの画像は端末の外に出ません）",
@@ -442,16 +443,25 @@ ui.aiSave.addEventListener("click", () => {
 });
 ui.aiTest.addEventListener("click", async () => {
   const before = { ...AI.settings };
-  AI.save(readAiForm());
+  const form = readAiForm();
+  AI.save(form);
   ui.aiResult.textContent = "テスト中…";
   try {
     await AI.ping();
     ui.aiResult.textContent = "✓ つながりました";
   } catch (e) {
     ui.aiResult.textContent = `✗ ${e.message}`;
-  } finally {
-    AI.save(before);   // 保存は「保存」を押したときだけ
   }
+  // 選んだモデルが使えなくても、キーが正しければ使えるモデルをメニューに足す
+  if (form.provider === "gemini" && form.geminiKey) {
+    try {
+      await AI.listGeminiModels();
+      AI.fillModelSelect(ui.geminiModel, form.geminiModel);
+    } catch (e) {
+      console.warn(e.message);
+    }
+  }
+  AI.save(before);   // 保存は「保存」を押したときだけ
 });
 // 内蔵AI のモデルの取り込みは、ボタンを押した直後にしか始められない（ブラウザの制限）
 ui.builtinPrepare.addEventListener("click", async () => {

@@ -21,9 +21,15 @@ const SelfTest = (() => {
     x.fillStyle = "#b7472a"; x.fillRect(0, 0, W, 40);
     x.fillStyle = "#fff"; x.fillRect(0, 40, W, 130);
     x.fillStyle = "#222"; x.font = `15px ${FONT}`;
-    ["ホーム", "挿入", "描画", "デザイン", "画面切り替え"].forEach((t, i) => x.fillText(t, 20 + i * 120, 65));
+    const tabs = ["ホーム", "挿入", "描画", "デザイン", "画面切り替え"];
+    tabs.forEach((t, i) => x.fillText(t, 20 + i * 120, 65));
+    // 選んでいるタブの下線
+    const active = { insert: "挿入", design: "デザイン" }[o.ribbon] ?? "ホーム";
+    x.fillStyle = "#b7472a"; x.fillRect(20 + tabs.indexOf(active) * 120, 73, x.measureText(active).width, 4);
+    x.fillStyle = "#222";
     const ribbon = o.ribbon === "insert"
       ? ["新しいスライド", "表", "画像", "図形", "SmartArt"]
+      : o.ribbon === "design" ? ["テーマ", "バリエーション", "スライドのサイズ", "背景の書式設定", "デザイナー"]
       : ["貼り付け", "新しいスライド", "レイアウト", "リセット", "図形"];
     ribbon.forEach((t, i) => x.fillText(t, 20 + i * 140, 150));
     x.fillStyle = "#ddd"; x.fillRect(20, 200, 260, 150);
@@ -56,6 +62,32 @@ const SelfTest = (() => {
       const [cx, cy] = o.cursor;
       x.fillStyle = "#000"; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx, cy + 32);
       x.lineTo(cx + 9, cy + 24); x.lineTo(cx + 21, cy + 24); x.closePath(); x.fill();
+    }
+    return c;
+  }
+
+  // Excel 風のグラフの画面（o: { trend: 近似直線の太さ, eq: 数式, pane: 書式の作業ウィンドウ, cursor: [x, y] }）
+  function chartScreen(o = {}) {
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    const x = c.getContext("2d");
+    x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);
+    x.fillStyle = "#107c41"; x.fillRect(0, 0, W, 50);
+    x.fillStyle = "#222"; x.font = `20px ${FONT}`;
+    ["ホーム", "挿入", "グラフのデザイン", "書式"].forEach((t, i) => x.fillText(t, 20 + i * 180, 100));
+    x.strokeStyle = "#999"; x.lineWidth = 1; x.strokeRect(500, 300, 760, 560);
+    x.fillStyle = "#4472c4";
+    for (let i = 0; i < 8; i++) { x.beginPath(); x.arc(560 + i * 85, 780 - i * 55 + (i % 2 ? 12 : -10), 6, 0, 7); x.fill(); }
+    if (o.trend) { x.strokeStyle = "#4472c4"; x.lineWidth = o.trend; x.beginPath(); x.moveTo(540, 790); x.lineTo(1210, 390); x.stroke(); }
+    if (o.eq) { x.fillStyle = "#444"; x.font = `16px ${FONT}`; x.fillText("y = 1.2x + 3.4", 1040, 420); }
+    if (o.pane) {
+      x.fillStyle = "#f3f3f3"; x.fillRect(1400, 150, 480, 900);
+      x.fillStyle = "#111"; x.font = `28px ${FONT}`; x.fillText("近似曲線の書式設定", 1430, 210);
+    }
+    if (o.cursor) {
+      const [cx, cy] = o.cursor;
+      x.fillStyle = "#000"; x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx, cy + 22); x.lineTo(cx + 15, cy + 16); x.closePath(); x.fill();
     }
     return c;
   }
@@ -171,6 +203,8 @@ const SelfTest = (() => {
     real.fetch = window.fetch;
     real.ai = JSON.stringify(AI.settings);
     real.ocrOn = ocr.on;
+    real.plan = prefs.plan;
+    real.templates = localStorage.getItem(Templates.KEY);
     window.grabRawFrame = async () => {
       const c = fake.screen();
       return { source: c, width: c.width, height: c.height, close() {} };
@@ -203,6 +237,10 @@ const SelfTest = (() => {
     AI.save(JSON.parse(real.ai));
     AI.resetForTest();
     ocr.on = real.ocrOn;
+    prefs.plan = real.plan;
+    if (real.templates === null) localStorage.removeItem(Templates.KEY);
+    else localStorage.setItem(Templates.KEY, real.templates);
+    fillLessonSelect();
   }
 
   // 偽の画面共有（中身は fake.screen に関係なく白い画面。判定は grabRawFrame の方を使う）
@@ -226,6 +264,10 @@ const SelfTest = (() => {
     AI.resetForTest();
     ocr.on = true;
     coach.busy = false; coach.again = false;
+    coach.fineBase = null; coach.finePrev = null; coach.fineAt = 0;
+    prefs.plan = false;
+    localStorage.removeItem(Templates.KEY);
+    el.tplNote.hidden = true;
     if (coach.retry) { clearTimeout(coach.retry); coach.retry = null; }
     state.pip = null;
     state.surface = "window";
@@ -387,6 +429,65 @@ const SelfTest = (() => {
         if (AI.normalizeModel(input) !== want) return `「${input}」→「${AI.normalizeModel(input)}」`;
       }
     }],
+    ["AI: モデルはメニューから選べ、保存済みのモデルも消えず、使えるモデルを足せる", async () => {
+      if (el.geminiModel.tagName !== "SELECT") return "モデル欄がメニューになっていない";
+      const sel = document.createElement("select");
+      AI.fillModelSelect(sel, "gemini-2.5-pro");
+      if (sel.value !== "gemini-2.5-pro") return `gemini-2.5-pro を選べない: ${sel.value}`;
+      AI.fillModelSelect(sel, "gemini-old-model");
+      if (sel.value !== "gemini-old-model") return "メニューにない保存済みのモデルが消えた";
+      AI.save({ provider: "gemini", geminiKey: "TEST-KEY" });
+      let req = null;
+      window.fetch = async (url, opts) => {
+        req = { url, opts };
+        return new Response(JSON.stringify({ models: [
+          { name: "models/gemini-new-pro", displayName: "Gemini New Pro", supportedGenerationMethods: ["generateContent"] },
+          { name: "models/gemini-new-tts", displayName: "TTS", supportedGenerationMethods: ["generateContent"] },
+          { name: "models/gemini-embedding", displayName: "Embed", supportedGenerationMethods: ["embedContent"] },
+        ] }));
+      };
+      const found = await AI.listGeminiModels();
+      window.fetch = real.fetch;
+      if (req.opts.headers["x-goog-api-key"] !== "TEST-KEY" || req.url.includes("TEST-KEY")) return "APIキーをヘッダーで送っていない";
+      if (found.map((m) => m.code).join() !== "gemini-new-pro") return `案内に向かないモデルが混ざった: ${found.map((m) => m.code)}`;
+      AI.fillModelSelect(sel, AI.DEFAULT_GEMINI_MODEL);
+      if (![...sel.options].some((o) => o.value === "gemini-new-pro")) return "見つけたモデルがメニューに入らない";
+    }],
+    ["起動直後: PowerPoint のレッスンを始めず、やりたいことを聞く", async () => {
+      const logs = el.log.children.length;
+      loadLesson("idle");
+      if (el.stepCard.hidden || !el.doneCard.hidden) return "完了の表示になっている";
+      if (!/やりたいこと/.test(el.stepText.textContent)) return `案内が違う: ${el.stepText.textContent}`;
+      if (!el.nextBtn.disabled || !el.restartBtn.disabled) return "進めるものがないのに「次へ」「やり直し」が押せる";
+      if (el.log.children.length !== logs) return "レッスンを始めていないのに記録が増えた";
+      if ([...el.lessonSelect.options].some((o) => o.value === "coach")) return "おまかせがレッスンのメニューに混ざった";
+      if (fixedLessonIds().includes("idle")) return "「次のレッスン」の巡回に待ち状態が混ざった";
+      await startCapture(fakeStream());
+      await sample(); await sample();
+      if (!el.confirmBox.hidden) return "手順がないのに「できた？」が出た";
+      stopCapture();
+    }],
+    ["画面共有のボタン: 状態に合わせて出し分け、止めると一時停止も戻る", async () => {
+      if (el.shareTopBtn.hidden || !el.stopCaptureBtn.hidden || !el.captureFoot.hidden) return "共有前の表示が違う";
+      await startCapture(fakeStream());
+      if (!el.shareTopBtn.hidden || el.stopCaptureBtn.hidden || el.pauseBtn.hidden || el.captureFoot.hidden) return "共有中の表示が違う";
+      if (el.captureChip.textContent !== "画面を共有中") return `共有中の表示: ${el.captureChip.textContent}`;
+      el.pauseBtn.click();
+      if (!/再開/.test(el.pauseBtn.textContent) || !/一時停止/.test(el.captureChip.textContent)) return "一時停止が表示に出ない";
+      stopCapture();
+      if (state.paused || el.shareTopBtn.hidden || !el.pauseBtn.hidden) return "共有を止めたあとの表示が戻らない";
+      if (el.captureChip.textContent !== "画面を共有していません") return `止めたあとの表示: ${el.captureChip.textContent}`;
+    }],
+    ["窓が小さくても: ボタンの文字を折り返さず、開始画面はスクロールできる", async () => {
+      for (const b of [el.startCaptureBtn, el.shareTopBtn, el.pipBtn, el.nextBtn]) {
+        if (getComputedStyle(b).whiteSpace !== "nowrap") return `${b.id} の文字が折り返される`;
+      }
+      if (getComputedStyle(el.captureStage).overflowY !== "auto") return "開始画面がスクロールできない";
+      el.emptyState.hidden = true;
+      const hiddenOverflow = getComputedStyle(el.captureStage).overflowY;
+      el.emptyState.hidden = false;
+      if (hiddenOverflow !== "hidden") return `共有中のプレビューがスクロール枠になる: ${hiddenOverflow}`;
+    }],
     ["AI: Gemini に正しい形で送り、```json で囲まれた答えも読める", async () => {
       let req = null;
       window.fetch = async (url, opts) => {
@@ -455,6 +556,440 @@ const SelfTest = (() => {
       await show(() => pptScreen({ ribbon: "insert", table: true }));
       if (!lesson().finished) return "表を入れても完了にならない";
     }],
+    ["おまかせ: 細い近似直線や数式の変化に気づいて AI に確かめ、カーソルの移動では呼ばない", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) return { current_done: "none", status: "next", say: "「線形近似」を選んでください", done_when: "グラフに直線が増える", target_id: 0, target_text: "", reason: "" };
+        return { current_done: "no", status: "next", say: "「線形近似」を選んでください", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      await show(() => chartScreen(), 2);
+      coach.fineAt = 0;
+      const calls = fake.aiCalls.length;
+      await show(() => chartScreen({ cursor: [300, 500] }), 4);
+      if (fake.aiCalls.length !== calls) return "カーソルの移動で AI を呼んだ";
+      await show(() => chartScreen(), 2);
+      coach.fineAt = 0;
+      await show(() => chartScreen({ trend: 1 }), 4);
+      if (fake.aiCalls.length <= calls) return "細い近似直線に気づかず、AI を呼ばなかった";
+      if (!/完了の目印: グラフに直線が増える/.test(fake.aiCalls[fake.aiCalls.length - 1].text)) return "完了の目印を AI に渡していない";
+      if (!/カーソルより大きな変化あり/.test(fake.aiCalls[fake.aiCalls.length - 1].text)) return "比べた結果を AI に渡していない";
+      const n = fake.aiCalls.length;
+      coach.fineAt = 0;
+      await show(() => chartScreen({ trend: 1, eq: true }), 4);
+      if (fake.aiCalls.length <= n) return "数式の表示に気づかなかった";
+    }],
+    ["おまかせ: 画面がほとんど変わらないのに AI が「できた」と言っても進まず、人に聞く", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) return { current_done: "none", status: "next", say: "グラフをクリック", target_id: 0, target_text: "", reason: "" };
+        return { current_done: "yes", evidence: "選んだように見える", status: "done", say: "完了", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      const first = coach.current;
+      await runCoach();
+      await settle();
+      if (lesson().finished) return "何も変わっていないのに完了になった";
+      if (coach.current !== first) return "何も変わっていないのに次へ進んだ";
+      if (el.confirmBox.hidden) return "「できた？」が出ていない";
+    }],
+    ["おまかせ: AI が「まだ」と言っても、完了の目印の文字が現れたら進み、次の一手を聞き直す", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) {
+          return fake.aiCalls.length > 1
+            ? { current_done: "none", status: "next", say: "次の手順", target_id: 0, target_text: "", reason: "" }
+            : { current_done: "none", status: "next", say: "近似曲線の追加を選ぶ", done_text: "近似曲線の書式設定", target_id: 0, target_text: "", reason: "" };
+        }
+        return { current_done: "no", status: "next", say: "近似曲線の追加を選ぶ（言い直し）", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      await show(() => chartScreen({ pane: true }));
+      if (coach.done[0] !== "近似曲線の追加を選ぶ") return `進まなかった（完了: ${coach.done.length}・いま: ${coach.current}）`;
+      if (coach.current !== "次の手順") return `言い直しを次の手順にした: ${coach.current}`;
+    }],
+    ["おまかせ: 操作の途中の「まだ」では知らせず、3回続くか「AIに聞く」を押したときだけ知らせる", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) return { current_done: "none", status: "next", say: "グラフをクリック", target_id: 0, target_text: "", reason: "" };
+        return { current_done: "no", evidence: "まだ選ばれていない", status: "next", say: "グラフをクリック", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      await show(() => chartScreen({ pane: true }));
+      if (coach.noCount !== 1) return `「まだ」を数えていない: ${coach.noCount}`;
+      if (!el.confirmBox.hidden || !el.aiBox.hidden) return "1回目の「まだ」で知らせた";
+      await show(() => chartScreen());
+      if (!el.confirmBox.hidden) return "2回目の「まだ」で知らせた";
+      await show(() => chartScreen({ pane: true }));
+      if (el.confirmBox.hidden || el.aiBox.hidden) return "3回続いても知らせない";
+      if (!el.confirmText.textContent.includes("まだ選ばれていない")) return "判断の根拠を出していない";
+      hideConfirm(); el.aiBox.hidden = true; coach.noCount = 0;
+      await runCoach(true);
+      await settle();
+      if (el.confirmBox.hidden) return "「AIに聞く」の答えを知らせていない";
+    }],
+    ["おまかせ: タブを押す手順は、AI が「まだ」と言っても、そのタブに切り替わったら進む", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) {
+          return fake.aiCalls.length > 1
+            ? { current_done: "none", status: "next", say: "「表」をクリック", target_id: idOf(text, "表"), target_text: "表", reason: "" }
+            : { current_done: "none", status: "next", say: "「挿入」タブをクリックしてください", target_id: idOf(text, "挿入"), target_text: "挿入", reason: "" };
+        }
+        return { current_done: "no", status: "next", say: "「挿入」タブをクリックしてください", target_id: idOf(text, "挿入"), target_text: "挿入", reason: "" };
+      };
+      await share();
+      await show(() => pptScreen());
+      startCoach("スライドに表を入れたい");
+      await settle();
+      if (state.target?.name !== "挿入") return `最初に光ったのが「${state.target?.name ?? "なし"}」`;
+      // 別のタブ（デザイン）を押しても進まない
+      await show(() => pptScreen({ ribbon: "design" }));
+      if (coach.done.length) return "違うタブを押したのに進んだ";
+      await show(() => pptScreen());
+      await show(() => pptScreen({ ribbon: "insert" }));
+      if (coach.done[0] !== "「挿入」タブをクリックしてください") return `挿入タブに切り替えても進まない（いま: ${coach.current}）`;
+      if (coach.current !== "「表」をクリック") return `次の一手に進まない（いま: ${coach.current}）`;
+    }],
+    ["おまかせ: 「できた」のあと次の一手が返ってこなければ、すぐ聞き直し、済んだ手順を出したままにしない", async () => {
+      AI.save({ provider: "builtin" });
+      let unsureOnce = true;
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) {
+          if (fake.aiCalls.length === 1) return { current_done: "none", status: "next", say: "グラフをクリック", target_id: 0, target_text: "", reason: "" };
+          return { current_done: "none", status: "next", say: "次の一手", target_id: 0, target_text: "", reason: "" };
+        }
+        if (unsureOnce) { unsureOnce = false; return { current_done: "yes", status: "unsure", say: "", target_id: 0, target_text: "", reason: "" }; }
+        return { current_done: "no", status: "next", say: "グラフをクリック", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      await show(() => chartScreen({ pane: true }));
+      if (coach.done[0] !== "グラフをクリック") return "「できた」を受け取っていない";
+      if (coach.current !== "次の一手") return `聞き直さずに止まった（いま: ${coach.current}・カード: ${el.stepText.textContent}）`;
+    }],
+    ["おまかせ: 終わった手順をまた出したら聞き直し、それでもくり返すなら「もうできた？」と聞く", async () => {
+      AI.save({ provider: "builtin" });
+      let stubborn = false;
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) {
+          if (fake.aiCalls.length === 1) return { current_done: "none", status: "next", say: "「グラフ」をクリック", target_id: 0, target_text: "", reason: "" };
+          const told = /これは終わった手順です/.test(text);
+          return { current_done: "none", status: "next", say: told && !stubborn ? "「近似曲線」を選ぶ" : "グラフを「グラフ」の所でクリック", target_id: 0, target_text: "", reason: "" };
+        }
+        return { current_done: "yes", status: "next", say: "グラフを「グラフ」の所でクリック", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      await show(() => chartScreen({ pane: true }));
+      if (coach.current !== "「近似曲線」を選ぶ") return `くり返しを聞き直していない（いま: ${coach.current}）`;
+      if (!el.loopBox.hidden) return "聞き直して解決したのに「もうできた？」が出た";
+      if (!fake.aiCalls.some((c) => /これは終わった手順です/.test(c.text))) return "AI に「終わった手順」と伝えていない";
+      // 言われてもくり返す AI
+      stubborn = true;
+      startCoach("近似直線を引きたい");
+      await settle();
+      await show(() => chartScreen());
+      if (el.loopBox.hidden) return "くり返しが続くのに「もうできた？」が出ない";
+      el.finishBtn.click();
+      if (!lesson().finished) return "「もうできた」で完了にならない";
+    }],
+    ["おまかせ: 画面が変わっても、AI が答えるまで拡大表示（ミニ窓のプレビュー）を消さない", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        const cur = (text.match(/いま案内中の手順: (.*)/) || [])[1];
+        if (cur.startsWith("（なし")) return { current_done: "none", status: "next", say: "「挿入」タブをクリック", target_id: idOf(text, "挿入"), target_text: "挿入", reason: "" };
+        return { current_done: "no", status: "next", say: "「挿入」タブをクリック", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => pptScreen());
+      startCoach("スライドに表を入れたい");
+      await settle();
+      if (el.guide.hidden) return "最初から拡大表示が出ない";
+      await show(() => pptScreen({ caret: true, title: "caret" }));
+      if (el.guide.hidden || !state.target) return "画面が変わったら拡大表示が消えた";
+    }],
+    ["手順を先に考える: AI は最初の1回だけ。あとは文字で進み、別のタブでは進まない", async () => {
+      AI.save({ provider: "builtin" });
+      prefs.plan = true;
+      fake.ai = (text) => {
+        if (/全手順を/.test(text)) return { app: "Mac の PowerPoint", steps: [
+          { do: "「挿入」タブを押す", result: "リボンが変わる", target: "挿入", appears: "", input: "" },
+          { do: "「SmartArt」を押す", result: "一覧が出る", target: "SmartArt", appears: "", input: "" },
+        ] };
+        throw new Error("計画のあとに AI を呼んだ");
+      };
+      await share();
+      await show(() => pptScreen());
+      startCoach("スライドに図を入れたい");
+      await settle();
+      if (!lesson().planned) return "計画の手順に切り替わらない";
+      if (el.planBox.hidden || el.planList.children.length !== 2) return "計画が表示されない";
+      if (el.planList.children[0].className !== "now") return "いまの手順に印が付かない";
+      await settle();
+      if (state.target?.name !== "挿入" || state.target.noBox) return `光らせた場所が違う: ${state.target?.name}`;
+      await show(() => pptScreen({ ribbon: "design" }));
+      if (state.step !== 0) return "違うタブで進んだ";
+      await show(() => pptScreen());
+      await show(() => pptScreen({ ribbon: "insert" }));
+      if (state.step !== 1) return `挿入タブで進まない（ステップ ${state.step + 1}）`;
+      // 最後の手順は文字で確かめられないので、落ち着いてから「できた？」と聞く
+      await show(() => pptScreen({ ribbon: "insert", table: true }));
+      if (!el.confirmBox.hidden) return "操作の途中で「できた？」を聞いた";
+      state.lastChangeAt = Date.now() - 7000;
+      maybeAskPlanned();
+      if (el.confirmBox.hidden) return "落ち着いても「できた？」を聞かない";
+      el.yesBtn.click();
+      await settle();
+      if (el.doneCard.hidden) return "完了にならない";
+      if (el.nextBtn.textContent !== "🧭 新しくはじめる") return `完了後のボタン: ${el.nextBtn.textContent}`;
+      if (fake.aiCalls.length !== 1) return `AI を ${fake.aiCalls.length} 回呼んだ`;
+    }],
+    ["手順を先に考える: 先の手順まで進んでいたら追いつき、場所が見つからなくても拡大表示を消さない", async () => {
+      AI.save({ provider: "builtin" });
+      prefs.plan = true;
+      fake.ai = () => ({ app: "", steps: [
+        { do: "幻のボタンを押す", result: "", target: "幻ボタン", appears: "幻パネル", input: "" },
+        { do: "次のボタンを押す", result: "", target: "別の幻", appears: "近似曲線の書式設定", input: "" },
+        { do: "最後の確認", result: "", target: "", appears: "", input: "" },
+      ] });
+      await share();
+      await show(() => chartScreen());
+      startCoach("近似直線を引きたい");
+      await settle();
+      if (el.guide.hidden || !state.target?.noBox) return "場所が見つからないときに拡大表示が消えた";
+      if (!el.targetBox.hidden) return "場所が分からないのに枠を出した";
+      await show(() => chartScreen({ pane: true }));
+      if (state.step !== 2) return `追いつかない（ステップ ${state.step + 1}）`;
+    }],
+    ["手順を先に考える: 回数制限なら、一手ごとの案内に切り替えず、待って計画を立て直す", async () => {
+      AI.save({ provider: "gemini", geminiKey: "TEST-KEY" });
+      prefs.plan = true;
+      window.fetch = async () => new Response('{"error":{"details":[{"retryDelay":"37s"}]}}', { status: 429 });
+      await share();
+      await show(() => pptScreen());
+      startCoach("スライドに表を入れたい");
+      await settle();
+      window.fetch = real.fetch;
+      const retry = coach.retry;
+      if (!retry) return "やり直しを予約していない";
+      timerHost().clearTimeout(retry);
+      coach.retry = null;
+      if (coach.planTried) return "計画をあきらめた";
+      if (!el.aiText.textContent.includes("38秒後")) return `待ち時間を知らせていない: ${el.aiText.textContent}`;
+    }],
+    ["手順を先に考える: まとめて書かれた手順を分け、くり返しと札の文字を除く", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = () => ({ app: "", steps: [
+        { do: "「グラフのデザイン」タブをクリックしてください", where: "上部", result: "", target: "グラフのデザイン", appears: "", input: "" },
+        { do: "「グラフのデザイン」タブを押してください", where: "", result: "", target: "グラフのデザイン", appears: "", input: "" },
+        { do: "「グラフ要素を追加」→「近似曲線」→「線形」を選ぶ", where: "左端", result: "直線が出る", target: "線形", appears: "", input: "" },
+        { do: "［アイコン］をクリックしてください", where: "", result: "", target: "［アイコン］", appears: "", input: "" },
+      ] });
+      const { steps: p } = await AI.planCoach({ goal: "g", app: "", image: null, items: [] });
+      const dos = p.map((s) => s.do);
+      if (p.length !== 5) return `手順の数が ${p.length}: ${dos.join(" / ")}`;
+      if (p[1].target !== "グラフ要素を追加" || p[3].target !== "線形" || p[3].result !== "直線が出る") return `分け方が違う: ${JSON.stringify(p)}`;
+      if (p[4].do !== "光っているアイコンをクリックしてください" || p[4].target) return `札の文字が残った: ${JSON.stringify(p[4])}`;
+    }],
+    ["AI: 案内に「［アイコン］」と書いてきても、利用者には見せない", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = () => ({ current_done: "none", status: "next", say: "「［アイコン］」のボタンをクリックしてください", target_id: 0, target_text: "", reason: "" });
+      const img = document.createElement("canvas");
+      const r = await AI.coach({ image: img, before: null, appeared: [], disappeared: [], app: "", goal: "g", done: [], current: null, items: [] });
+      if (/アイコン[］\]】]|[［\[【]/.test(r.say)) return `札の文字が残った: ${r.say}`;
+      if (r.say !== "光っているアイコンをクリックしてください") return `言い換えが違う: ${r.say}`;
+    }],
+    ["手順を先に考える: もう開いているタブの手順は飛ばし、「まだ」のあとはすぐ聞き直さない", async () => {
+      AI.save({ provider: "builtin" });
+      prefs.plan = true;
+      fake.ai = () => ({ app: "", steps: [
+        { do: "「挿入」タブをクリックしてください", where: "", result: "", target: "挿入", appears: "", input: "" },
+        { do: "「SmartArt」をクリックしてください", where: "", result: "", target: "SmartArt", appears: "", input: "" },
+      ] });
+      await share();
+      await show(() => pptScreen({ ribbon: "insert" }));
+      startCoach("図を入れたい");
+      await settle();
+      await settle();
+      if (state.step !== 1) return `開いているタブの手順で止まった（ステップ ${state.step + 1}）`;
+      state.plannedChanged = true;
+      state.lastChangeAt = Date.now() - 7000;
+      maybeAskPlanned();
+      if (el.confirmBox.hidden) return "「できた？」が出ない";
+      el.notYetBtn.click();
+      state.plannedChanged = true;
+      maybeAskPlanned();
+      if (!el.confirmBox.hidden) return "「まだ」のあとすぐ聞き直した";
+    }],
+    ["テンプレ: やりたいことに合えば AI を使わずに、ボタンの道順を1つずつの手順に分けて案内する", async () => {
+      AI.save({ provider: "off" });
+      await share();
+      await show(() => pptScreen());
+      el.goalInline.value = "スライドに表を入れたい";
+      el.goalForm.requestSubmit();
+      await settle();
+      if (!lesson().planned || coach.source !== "template") return "テンプレで始まらない";
+      if (el.tplNote.hidden) return "テンプレで案内することを知らせていない";
+      const texts = lesson().steps.map((s) => s.text);
+      if (texts.length !== 3 || texts[0] !== "「挿入」タブをクリックしてください" || texts[1] !== "「表」をクリックしてください") {
+        return `手順の分け方が違う: ${texts.join(" / ")}`;
+      }
+      await show(() => pptScreen({ ribbon: "insert" }));
+      if (state.step !== 1) return `挿入タブで進まない（ステップ ${state.step + 1}）`;
+      if (fake.aiCalls.length) return `AI を ${fake.aiCalls.length} 回呼んだ`;
+      if (![...el.lessonSelect.options].some((o) => o.value === "tpl:excel-trendline")) return "テンプレがメニューに出ない";
+    }],
+    ["テンプレ: AI の計画を保存すると、次は AI を使わない。書き出し・読み込みもできる", async () => {
+      AI.save({ provider: "builtin" });
+      prefs.plan = true;
+      fake.ai = (text) => {
+        if (!/全手順を/.test(text)) throw new Error("計画のあとに AI を呼んだ");
+        return { app: "Mac の PowerPoint", steps: [
+          { do: "「デザイン」タブをクリックしてください", where: "上", result: "", target: "デザイン", appears: "", input: "" },
+          { do: "好きなテーマをクリックしてください", where: "", result: "", target: "", appears: "", input: "" },
+        ] };
+      };
+      await share();
+      await show(() => pptScreen());
+      el.goalInline.value = "スライドの見た目をおしゃれに変えたい";
+      el.goalForm.requestSubmit();
+      await settle();
+      if (!lesson().planned || coach.source !== "ai") return "AI の計画で始まらない";
+      el.nextBtn.click();
+      el.nextBtn.click();
+      if (el.doneCard.hidden) return "完了にならない";
+      if (el.saveTplBtn.hidden) return "テンプレに保存するボタンが出ない";
+      el.saveTplBtn.click();
+      if (!el.saveTplBtn.hidden) return "保存したあともボタンが出たまま";
+      el.goalInline.value = "スライドの見た目をおしゃれに変えたい";
+      el.goalForm.requestSubmit();
+      await settle();
+      if (coach.source !== "template") return "保存したテンプレを使わなかった";
+      if (fake.aiCalls.length !== 1) return `保存したテンプレがあるのに AI を呼んだ（${fake.aiCalls.length}回）`;
+      const exported = Templates.exportJson();
+      localStorage.removeItem(Templates.KEY);
+      if (Templates.importJson(exported) !== 1) return "書き出したテンプレを読み込めない";
+      try { Templates.importJson("{壊れた"); return "壊れた文字を読み込んだ"; } catch (e) { if (!/JSON/.test(e.message)) return `エラーの説明が違う: ${e.message}`; }
+      try { Templates.importJson('{"title":"x"}'); return "手順のないテンプレを読み込んだ"; } catch { /* 期待どおり */ }
+    }],
+    ["手順を先に考える: 計画を立てられなくても、一手ずつの案内は続く", async () => {
+      AI.save({ provider: "builtin" });
+      prefs.plan = true;
+      fake.ai = (text) => {
+        if (/全手順を/.test(text)) throw new Error("計画に失敗");
+        return { current_done: "none", status: "next", say: "「挿入」タブをクリック", target_id: idOf(text, "挿入"), target_text: "挿入", reason: "" };
+      };
+      await share();
+      await show(() => pptScreen());
+      startCoach("スライドに表を入れたい");
+      await settle();
+      if (coach.current !== "「挿入」タブをクリック") return `案内が止まった（いま: ${coach.current}）`;
+      if (!el.planBox.hidden) return "計画がないのに表示された";
+    }],
+    ["手順を先に考える: 画面にないボタン名を言ったら1度だけ聞き直す", async () => {
+      AI.save({ provider: "builtin" });
+      prefs.plan = true;
+      fake.ai = (text) => {
+        if (/全手順を/.test(text)) return { app: "", steps: [] };
+        if (/は画面に見つかりません/.test(text)) return { current_done: "none", status: "next", say: "「挿入」タブをクリック", target_id: idOf(text, "挿入"), target_text: "挿入", reason: "" };
+        return { current_done: "none", status: "next", say: "「幻の機能ボタン」をクリック", target_id: 0, target_text: "", reason: "" };
+      };
+      await share();
+      await show(() => pptScreen());
+      startCoach("スライドに表を入れたい");
+      await settle();
+      if (coach.current !== "「挿入」タブをクリック") return `聞き直していない（いま: ${coach.current}）`;
+      // 読み違いがあっても、画面にある名前は「ない」と言わない
+      const items = [{ text: "新しいスライオ" }, { text: "挿人" }];
+      if (namesNotOnScreen("「新しいスライド」を押す", items).length) return "読み違いの名前を「ない」と判定した";
+      if (!namesNotOnScreen("「近似曲線」を押す", items).length) return "画面にない名前を見逃した";
+    }],
+    ["AI: Gemini が混んでいる（503）ときは少し待ってやり直し、だめなら軽いモデルで答える", async () => {
+      AI.save({ provider: "gemini", geminiKey: "TEST-KEY", geminiModel: "gemini-3.8-flash" });
+      const saved = { ...AI.limits };
+      AI.limits.retryWaitMs = 10;
+      const urls = [], notices = [];
+      const prevNotice = AI.setNotice((m) => notices.push(m));
+      const ok = () => new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"ok": true}' }] } }] }));
+      let busy = 1;
+      window.fetch = async (url) => { urls.push(url); return busy-- > 0 ? new Response("overloaded", { status: 503 }) : ok(); };
+      try {
+        await AI.planCoach({ goal: "g", app: "", image: null, items: [] });
+        if (urls.length !== 2 || !urls[1].includes("gemini-3.8-flash")) return `同じモデルでやり直していない: ${urls}`;
+        urls.length = 0;
+        busy = 2;
+        await AI.planCoach({ goal: "g", app: "", image: null, items: [] });
+        if (urls.length !== 3 || !urls[2].includes("gemini-3.5-flash-lite")) return `軽いモデルに切り替えていない: ${urls}`;
+        if (!notices.some((m) => /混んでいたので.*Flash-Lite で答えました/.test(m))) return `切り替えを知らせていない: ${notices}`;
+        urls.length = 0;
+        busy = 9;
+        let err;
+        try { await AI.ping(); } catch (e) { err = e; }
+        if (!err || !/混み合っています（503）/.test(err.message)) return `接続テストのエラーが違う: ${err?.message}`;
+        if (urls.some((u) => u.includes("flash-lite"))) return "接続テストで別のモデルに切り替えた";
+        urls.length = 0;
+        window.fetch = async (url) => { urls.push(url); return new Response("bad key", { status: 400 }); };
+        try { await AI.planCoach({ goal: "g", app: "", image: null, items: [] }); } catch { /* 期待どおり */ }
+        if (urls.length !== 1) return "やり直しても無駄なエラーをやり直した";
+      } finally {
+        window.fetch = real.fetch;
+        Object.assign(AI.limits, saved);
+        AI.setNotice(prevNotice);
+      }
+    }],
+    ["AI: 返事がないときは時間で打ち切り、接続テストが「テスト中…」のまま止まらない", async () => {
+      const saved = { ...AI.limits };
+      Object.assign(AI.limits, { timeoutMs: 150, pingTimeoutMs: 150, listTimeoutMs: 150, retryWaitMs: 10 });
+      window.fetch = (url, opts) => new Promise((_, reject) => {
+        opts?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+      try {
+        openAiDialog();
+        el.aiDialog.querySelector("input[name=provider][value=gemini]").checked = true;
+        el.geminiKey.value = "TEST-KEY";
+        el.aiTest.click();
+        await wait(1500);
+        if (el.aiTestResult.textContent.startsWith("テスト中")) return "「テスト中…」のまま止まった";
+        if (!/返事がありません/.test(el.aiTestResult.textContent)) return `結果の表示が違う: ${el.aiTestResult.textContent}`;
+      } finally {
+        el.aiDialog.close();
+        window.fetch = real.fetch;
+        Object.assign(AI.limits, saved);
+      }
+    }],
+    ["AI: 回数制限（429）のあと、Gemini が言う時間だけ待ってやり直す", async () => {
+      AI.save({ provider: "gemini", geminiKey: "TEST-KEY" });
+      window.fetch = async () => new Response('{"error":{"details":[{"retryDelay":"37s"}]}}', { status: 429 });
+      let err;
+      try { await AI.ping(); } catch (e) { err = e; }
+      window.fetch = real.fetch;
+      if (AI.retryDelay(err ?? {}) !== 38000) return `待ち時間が違う: ${err && AI.retryDelay(err)}`;
+      if (AI.retryDelay(new Error("APIキーが正しくないようです")) !== 0) return "やり直しても無駄なエラーをやり直す";
+    }],
     ["おまかせ: アイコンだけのボタンを番号札で選ばせ、その場所を光らせる", async () => {
       AI.save({ provider: "builtin" });
       // 一覧の位置（%）から、長方形ツールにいちばん近い「［アイコン］」の札を選ぶ AI
@@ -491,6 +1026,7 @@ const SelfTest = (() => {
       await show(() => pptScreen());
       startCoach("スライドに表を入れたい");
       await settle();
+      coach.noCount = NO_NOTICE_AFTER - 1;
       await show(() => pptScreen({ ribbon: "insert" }));
       if (el.confirmBox.hidden) return "AI が「まだ」のときに「できた ✓」が出ていない";
       AI.resetForTest();

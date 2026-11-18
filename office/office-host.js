@@ -16,6 +16,28 @@ const clip = (s, n = 40) => {
 };
 
 // ─── Excel ────────────────────────────────────────
+// グラフと近似曲線の一覧。近似曲線を足してもセルは変わらないので、ここで読まないと「できた」に気づけない。
+// 近似曲線を読めない古い Excel では、グラフの名前と種類だけを返す
+async function readCharts(ctx, sheet) {
+  const charts = sheet.charts.items;
+  if (!charts.length) return "なし";
+  const names = charts.map((c) => `${c.name}（${c.chartType}）`);
+  try {
+    for (const c of charts) c.series.load("items/name");
+    await ctx.sync();
+    const all = charts.flatMap((c) => c.series.items);
+    for (const s of all) s.trendlines.load("items/type, items/showEquation, items/showRSquared");
+    await ctx.sync();
+    return charts.map((c, i) => {
+      const lines = c.series.items.flatMap((s) => s.trendlines.items.map((t) =>
+        `${s.name}に${t.type}${t.showEquation ? "・数式あり" : ""}${t.showRSquared ? "・R2乗値あり" : ""}`));
+      return `${names[i]} 近似曲線: ${lines.join("、") || "なし"}`;
+    }).join("、");
+  } catch {
+    return names.join("、");
+  }
+}
+
 const ExcelHost = {
   name: "Excel",
   targetKind: "セル範囲を A1:C5 の形で（シートが違えば Sheet2!A1:C5 の形で）",
@@ -42,6 +64,7 @@ const ExcelHost = {
       const peek = sel.getCell(0, 0).getResizedRange(rows - 1, cols - 1);
       peek.load("values");
       await ctx.sync();
+      const charts = await readCharts(ctx, sheet);
       const borders = sel.format.borders.items.filter((b) => b.style && b.style !== "None").map((b) => b.sideIndex);
       const f = sel.format.font;
       return [
@@ -53,7 +76,7 @@ const ExcelHost = {
           + ` 罫線=${borders.length ? borders.join("・") : "なし"}`,
         `入力されている範囲: ${used.isNullObject ? "なし（空のシート）" : used.address}`,
         `表（テーブル）: ${sheet.tables.items.map((t) => t.name).join("、") || "なし"}`,
-        `グラフ: ${sheet.charts.items.map((c) => `${c.name}（${c.chartType}）`).join("、") || "なし"}`,
+        `グラフ: ${charts}`,
       ].join("\n");
     });
   },
