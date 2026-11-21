@@ -99,7 +99,7 @@ el.goalForm.addEventListener("submit", (e) => {
   const goal = el.goalInline.value.trim();
   if (!goal) { el.goalInline.focus(); return; }
   // 合うテンプレがあれば、AI を使わずに案内する（AI が OFF でも使える）
-  const template = Templates.match(goal);
+  const template = Templates.match(goal, currentApp());
   if (template) {
     el.goalInline.blur();
     startCoach(goal, template, { auto: true });
@@ -246,5 +246,44 @@ el.tplImport.addEventListener("click", () => {
     fillLessonSelect();
   } catch (e) {
     el.tplResult.textContent = `✗ ${e.message}`;
+  }
+});
+
+// ─── 使うソフト ─────────────────────────────────────
+renderAppSelect();
+el.appSelect.addEventListener("change", () => {
+  if (el.appSelect.value) addLog(`使うソフト: ${el.appSelect.value}`);
+});
+
+// ─── 公式ヘルプからテンプレを作る ─────────────────────
+el.docApp.append(...Templates.apps.map((a) => new Option(a.id, a.id)));
+function renderDocHelp() { el.docHelp.href = Templates.appInfo(el.docApp.value)?.help ?? "#"; }
+el.docApp.addEventListener("change", renderDocHelp);
+el.tplBtn.addEventListener("click", () => {
+  if (currentApp()) el.docApp.value = currentApp();
+  renderDocHelp();
+});
+el.docMake.addEventListener("click", async () => {
+  const text = el.docText.value.trim();
+  if (text.length < 40) { el.tplResult.textContent = "公式ヘルプのページの文章を貼り付けてください。"; return; }
+  if (!AI.enabled()) { el.tplResult.textContent = "テンプレを作るには AI の設定が必要です（⚙ 設定 → 🤖 AI）。"; return; }
+  const app = el.docApp.value;
+  el.docMake.disabled = true;
+  el.tplResult.textContent = "🤖 AI が公式ヘルプを読んで、テンプレを作っています…";
+  try {
+    const r = await AI.templateFromDoc({ text, url: el.docUrl.value.trim(), app, hint: Templates.appInfo(app)?.hint ?? "" });
+    const t = r.steps.length ? Templates.save(Templates.fromDoc(r, { url: el.docUrl.value.trim(), app })) : null;
+    if (!t) {
+      el.tplResult.textContent = "✗ この文章からは手順を読み取れませんでした。操作の手順が書かれたページを貼ってください。";
+      return;
+    }
+    el.docText.value = "";
+    el.tplResult.textContent = `✓ テンプレ「${t.title}」（${t.steps.length} 手）を作りました。やりたいことに「${t.keywords[0] ?? t.title}」などと書くと使われます。`;
+    renderTplList();
+    fillLessonSelect();
+  } catch (e) {
+    el.tplResult.textContent = `✗ 作れませんでした: ${e.message}`;
+  } finally {
+    el.docMake.disabled = false;
   }
 });

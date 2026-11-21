@@ -268,6 +268,9 @@ const SelfTest = (() => {
     prefs.plan = false;
     localStorage.removeItem(Templates.KEY);
     el.tplNote.hidden = true;
+    state.detectedApp = "";
+    el.appSelect.value = "";
+    renderAppSelect();
     if (coach.retry) { clearTimeout(coach.retry); coach.retry = null; }
     state.pip = null;
     state.surface = "window";
@@ -895,6 +898,57 @@ const SelfTest = (() => {
       if (Templates.importJson(exported) !== 1) return "書き出したテンプレを読み込めない";
       try { Templates.importJson("{壊れた"); return "壊れた文字を読み込んだ"; } catch (e) { if (!/JSON/.test(e.message)) return `エラーの説明が違う: ${e.message}`; }
       try { Templates.importJson('{"title":"x"}'); return "手順のないテンプレを読み込んだ"; } catch { /* 期待どおり */ }
+    }],
+    ["使うソフト: 画面の文字とウインドウ名から見分け、そのソフトのテンプレだけを使う", async () => {
+      const cases = [
+        ["ファイル 編集 イメージ レイヤー 書式 選択範囲 フィルター 表示", "", "Photoshop"],
+        ["ファイル 編集 オブジェクト 書式 選択 効果 表示 アートボード", "", "Illustrator"],
+        ["File Edit Render Layout Modeling Sculpting Object Mode", "", "Blender"],
+        ["ファイル 編集 表示 挿入 表示形式 データ ツール 拡張機能", "無題のスプレッドシート - Google スプレッドシート", "Google スプレッドシート"],
+        ["ホーム 挿入 ページレイアウト 数式 データ 校閲", "", "Excel"],
+        ["今日はいい天気です", "", ""],
+      ];
+      for (const [text, label, want] of cases) {
+        const got = Templates.detectApp(text, label);
+        if (got !== want) return `「${text.slice(0, 12)}…」を ${got || "不明"} と判断（期待: ${want || "不明"}）`;
+      }
+      noteApp("Adobe Photoshop 2026 イメージ レイヤー フィルター");
+      if (currentApp() !== "Photoshop" || !el.appSelect.options[0].text.includes("Photoshop")) return "見分けたソフトを覚えていない";
+      if (Templates.match("スライドに表を入れたい", currentApp())) return "Photoshop なのに PowerPoint のテンプレを選んだ";
+      el.appSelect.value = "PowerPoint";
+      if (Templates.match("スライドに表を入れたい", currentApp())?.id !== "powerpoint-table") return "選んだソフトのテンプレを使わない";
+    }],
+    ["公式ヘルプから: 貼った文章を AI がテンプレにし、出典つきで保存して使う", async () => {
+      AI.save({ provider: "builtin" });
+      fake.ai = (text) => {
+        if (!/公式ヘルプのページの文章です/.test(text)) throw new Error("テンプレ作り以外で AI を呼んだ");
+        return { title: "画像をぼかす", app: "Photoshop", keywords: ["ぼかし", "ぼかす"], steps: [
+          { do: "「フィルター」メニューの「ぼかし」から「ぼかし（ガウス）」を選んでください", where: "上部のメニューバー",
+            path: ["フィルター", "ぼかし", "ぼかし（ガウス）"], appears: "ぼかし（ガウス）", input: "", state: [] },
+          { do: "「半径」を決めて「OK」を押してください", where: "開いたダイアログ", path: ["OK"], appears: "", input: "", state: [] },
+        ] };
+      };
+      el.tplBtn.click();
+      el.docApp.value = "Photoshop";
+      el.docUrl.value = "https://helpx.adobe.com/jp/photoshop/using/blur.html";
+      el.docText.value = "ぼかし（ガウス）フィルターを使うと、画像を滑らかにぼかせます。フィルター／ぼかし／ぼかし（ガウス）を選択します。半径を設定して OK をクリックします。";
+      el.docMake.click();
+      await settle();
+      for (let i = 0; i < 20 && el.docMake.disabled; i++) await wait(100);
+      el.tplDialog.close();
+      const t = Templates.all("Photoshop").find((x) => x.title === "画像をぼかす");
+      if (!t) return `テンプレができない: ${el.tplResult.textContent}`;
+      if (t.source !== "https://helpx.adobe.com/jp/photoshop/using/blur.html") return "出典を残していない";
+      const sent = fake.aiCalls[0]?.text ?? "";
+      if (!sent.includes("ぼかし（ガウス）フィルターを使うと") || !sent.includes("Adobe Photoshop")) return "貼った文章やソフトの説明を AI に渡していない";
+      el.appSelect.value = "Photoshop";
+      el.goalInline.value = "写真をぼかしたい";
+      el.goalForm.requestSubmit();
+      await settle();
+      if (coach.source !== "template" || coach.template?.id !== t.id) return "作ったテンプレを使わない";
+      if (el.tplSource.hidden || el.tplSource.href !== t.source) return "出典を表示していない";
+      if (lesson().steps[0].text !== "上の「フィルター」メニューをクリックしてください") return `メニューの案内が違う: ${lesson().steps[0].text}`;
+      if (fake.aiCalls.length !== 1) return "テンプレを作ったあとに AI を呼んだ";
     }],
     ["手順を先に考える: 計画を立てられなくても、一手ずつの案内は続く", async () => {
       AI.save({ provider: "builtin" });

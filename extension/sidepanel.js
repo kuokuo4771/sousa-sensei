@@ -22,6 +22,17 @@ const tabApi = {
   shot(windowId) {
     return chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 80 });
   },
+  // ページの文章（公式ヘルプからテンプレを作るため）。本文らしい部分があればそこだけ
+  async pageText(tabId) {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const main = document.querySelector("main, article, [role=main]") ?? document.body;
+        return { text: main.innerText, title: document.title, url: location.href };
+      },
+    });
+    return res?.result ?? null;
+  },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -31,7 +42,7 @@ const ui = Object.fromEntries([
   "providerOff", "providerBuiltin", "providerGemini", "builtinState", "builtinPrepare", "geminiKey", "geminiModel",
   "aiSave", "aiTest", "aiResult", "voiceOn", "learnOn",
   "teachBox", "teachText", "thinkBox", "hintText", "revealBtn", "answerBox", "explainBtn", "explainList",
-  "doneSummary", "learnedBox", "learnedList", "questionForm", "questionInput",
+  "doneSummary", "learnedBox", "learnedList", "questionForm", "questionInput", "docApp", "docMake", "docCopy", "docResult", "docJson",
 ].map((id) => [id, $(id)]));
 
 const run = {
@@ -480,3 +491,37 @@ ui.builtinPrepare.addEventListener("click", async () => {
 // ─── 起動 ─────────────────────────────────────────
 renderAi();
 attach().then(() => setWatch(run.tab ? "やりたいことを書いて「開始」を押してください" : ""));
+
+// ─── このページ（公式ヘルプ）からテンプレを作る ──────────────
+ui.docApp.append(new Option("（ページから見分ける）", ""), ...Templates.apps.map((a) => new Option(a.id, a.id)));
+ui.docMake.addEventListener("click", async () => {
+  if (!AI.enabled()) { ui.docResult.textContent = "テンプレを作るには、下の「設定」で AI を選んでください"; return; }
+  ui.docMake.disabled = true;
+  ui.docCopy.hidden = ui.docJson.hidden = true;
+  ui.docResult.textContent = "🤖 AI がこのページを読んで、テンプレを作っています…";
+  try {
+    const tab = await tabApi.activeTab();
+    const page = tab ? await tabApi.pageText(tab.id) : null;
+    if (!page?.text || page.text.trim().length < 40) throw new Error("このページの文章を読めませんでした");
+    const app = ui.docApp.value || Templates.detectApp(page.title + page.url + page.text.slice(0, 3000), page.title);
+    const r = await AI.templateFromDoc({ text: page.text, url: page.url, title: page.title, app, hint: Templates.appInfo(app)?.hint ?? "" });
+    const t = r.steps.length ? Templates.fromDoc(r, { url: page.url, app }) : null;
+    if (!t) throw new Error("このページからは手順を読み取れませんでした。操作の手順が書かれたページで押してください");
+    ui.docJson.value = JSON.stringify([t], null, 2);
+    ui.docJson.hidden = ui.docCopy.hidden = false;
+    ui.docResult.textContent = `✓ テンプレ「${t.title}」（${t.app || "ソフト不明"}・${t.steps.length} 手）を作りました。「コピー」して本体や Office 版で読み込んでください`;
+  } catch (e) {
+    ui.docResult.textContent = `✗ ${e.message}`;
+  } finally {
+    ui.docMake.disabled = false;
+  }
+});
+ui.docCopy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(ui.docJson.value);
+    ui.docResult.textContent = "✓ コピーしました";
+  } catch {
+    ui.docJson.select();
+    ui.docResult.textContent = "欄の文字を選びました。⌘C / Ctrl+C でコピーしてください";
+  }
+});

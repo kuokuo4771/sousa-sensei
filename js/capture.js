@@ -91,6 +91,9 @@ async function startCapture(stream) {
     el.statChanges.textContent = "変化 0 回";
     setStatus("見守り中");
     addLog(`共有開始: ${track.label || "ウインドウ"}`);
+    noteApp("", track.label);
+    // まだ何も始めていなければ、画面の文字を1度読んで使っているソフトを見分けておく
+    if (lesson().idle && ocr.on) ensureOcr().then(() => readScreen());
     warnedHidden = false;
     const step = currentStep();
     if (step) speak(`ステップ${state.step + 1}。${step.text}`);

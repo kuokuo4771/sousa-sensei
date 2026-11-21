@@ -16,6 +16,32 @@
 // 利用者が保存したテンプレは、このブラウザ（Office の中ではそのアドイン）に保存し、書き出し・読み込みで受け渡す。
 "use strict";
 
+// 案内できるソフト。title はウインドウ名や画面の文字に出るソフト名、words はそのソフトの画面によく出る言葉（見分けるため）。
+// hint は AI に渡す、そのソフトの画面の作り。help は公式ヘルプの入口（テンプレを作るとき開く）
+const APPS = [
+  { id: "Excel", help: "https://support.microsoft.com/ja-jp/excel", title: /Microsoft Excel|Excel/,
+    words: ["数式", "データ", "ページレイアウト", "オートSUM", "並べ替え", "条件付き書式"],
+    hint: "Mac の Microsoft Excel（日本語版）。上部のリボン（タブとボタン）で操作する" },
+  { id: "Word", help: "https://support.microsoft.com/ja-jp/word", title: /Microsoft Word/,
+    words: ["参考資料", "差し込み文書", "段落", "スタイル", "レイアウト"],
+    hint: "Mac の Microsoft Word（日本語版）。上部のリボン（タブとボタン）で操作する" },
+  { id: "PowerPoint", help: "https://support.microsoft.com/ja-jp/powerpoint", title: /PowerPoint/,
+    words: ["スライドショー", "画面切り替え", "アニメーション", "新しいスライド", "デザイン"],
+    hint: "Mac の Microsoft PowerPoint（日本語版）。上部のリボン（タブとボタン）で操作する" },
+  { id: "Google スプレッドシート", help: "https://support.google.com/docs/?hl=ja", title: /スプレッドシート|Google Sheets/,
+    words: ["表示形式", "拡張機能", "ツール", "データ", "共有"],
+    hint: "ブラウザ（Chrome）の Google スプレッドシート。上部のメニュー（ファイル・編集・表示・挿入・表示形式・データ・ツール・拡張機能・ヘルプ）とその下のツールバーで操作する。リボンはない" },
+  { id: "Illustrator", help: "https://helpx.adobe.com/jp/illustrator/desktop.html", title: /Illustrator/,
+    words: ["オブジェクト", "効果", "アートボード", "書式", "選択"],
+    hint: "Mac の Adobe Illustrator（日本語版）。上部のメニューバー（ファイル・編集・オブジェクト・書式・選択・効果・表示・ウィンドウ）、左のツールバー（アイコンだけのツール）、右のパネルで操作する。画面は暗い色" },
+  { id: "Photoshop", help: "https://helpx.adobe.com/jp/photoshop/desktop.html", title: /Photoshop/,
+    words: ["イメージ", "レイヤー", "選択範囲", "フィルター", "ブラシ"],
+    hint: "Mac の Adobe Photoshop（日本語版）。上部のメニューバー（ファイル・編集・イメージ・レイヤー・書式・選択範囲・フィルター・表示・ウィンドウ）、左のツールバー（アイコンだけのツール）、右のパネルで操作する。画面は暗い色" },
+  { id: "Blender", help: "https://docs.blender.org/manual/ja/latest/", title: /Blender/,
+    words: ["オブジェクトモード", "モデリング", "スカルプト", "Layout", "Modeling", "Object Mode", "Scene Collection"],
+    hint: "Blender。表示は英語のことも日本語のこともあるので、ボタン名は画面の表記に合わせる。上部のメニュー（ファイル・編集・レンダー・ウィンドウ）、3Dビューポートのヘッダー（ビュー・選択・追加・オブジェクト）で操作し、ショートカット（例: Shift+A で追加）もよく使う。画面は暗い色" },
+];
+
 const TEMPLATE_LIBRARY = [
   {
     id: "excel-trendline", app: "Excel", title: "散布図に近似直線を引いて数式を表示する", sample: true,
@@ -78,7 +104,8 @@ const Templates = (() => {
     })).filter((s) => s.do).slice(0, 20);
     const title = text(t.title, 80);
     if (!steps.length || !title) return null;
-    return { id: text(t.id, 60) || `user-${Date.now()}`, app: text(t.app, 30), title, keywords: list(t.keywords), sample: !!t.sample, steps };
+    const source = /^https?:\/\//.test(text(t.source, 300)) ? text(t.source, 300) : "";
+    return { id: text(t.id, 60) || `user-${Date.now()}`, app: text(t.app, 30), title, keywords: list(t.keywords), sample: !!t.sample, source, steps };
   }
 
   // app を指定すると、そのアプリのテンプレだけ（app が空のテンプレはどのアプリでも）
@@ -129,8 +156,11 @@ const Templates = (() => {
   }
 
   // ─── 画面共有（本体）の手順にする ─────────────
-  // 押す順のボタン（path）は、1つずつの手順に分けて光らせる。最初のボタンが2つ以上あるときの先頭はタブとみなす
+  // 押す順のボタン（path）は、1つずつの手順に分けて光らせる。
+  // リボンのある Office（Excel・Word・PowerPoint）では先頭をタブ、それ以外（Photoshop・Blender など）ではメニューとして案内する
+  const RIBBON_APPS = ["Excel", "Word", "PowerPoint"];
   function toScreenSteps(t) {
+    const ribbon = !t.app || RIBBON_APPS.includes(t.app);
     const out = [];
     for (const s of t.steps) {
       if (s.path.length <= 1) {
@@ -140,7 +170,8 @@ const Templates = (() => {
       s.path.forEach((name, i) => {
         const last = i === s.path.length - 1;
         out.push({
-          do: i === 0 ? `「${name}」タブをクリックしてください` : `「${name}」をクリックしてください`,
+          do: i > 0 ? `「${name}」をクリックしてください`
+            : ribbon ? `「${name}」タブをクリックしてください` : `上の「${name}」メニューをクリックしてください`,
           where: i === 0 ? s.where : "", result: last ? s.do : "", target: name,
           appears: last ? s.appears : "", input: last ? s.input : "",
         });
@@ -164,5 +195,26 @@ const Templates = (() => {
     });
   }
 
-  return { all, get, match, save, remove, exportJson, importJson, toScreenSteps, fromScreenPlan, fromOfficePlan, clean, KEY };
+  // 画面の文字（text）とウインドウ名（label）から、使っているソフトを見分ける。分からなければ ""
+  function detectApp(text, label = "") {
+    const t = String(text ?? "");
+    let best = "", bestScore = 0;
+    for (const app of APPS) {
+      let score = 0;
+      if (app.title.test(label)) score += 10;
+      if (app.title.test(t)) score += 5;
+      score += app.words.filter((w) => t.includes(w)).length;
+      if (score > bestScore) { best = app.id; bestScore = score; }
+    }
+    return bestScore >= 3 ? best : "";
+  }
+  function appInfo(id) { return APPS.find((a) => a.id === id) ?? null; }
+
+  // AI が公式ヘルプの文章から作ったもの（AI.templateFromDoc の答え）をテンプレにする
+  function fromDoc(r, { url = "", app = "" } = {}) {
+    return clean({ ...r, id: `user-doc-${Date.now()}`, app: app || r.app, source: url });
+  }
+
+  return { all, get, match, save, remove, exportJson, importJson, toScreenSteps, fromScreenPlan, fromOfficePlan, clean, KEY,
+    detectApp, appInfo, apps: APPS, fromDoc };
 })();

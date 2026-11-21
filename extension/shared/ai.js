@@ -462,7 +462,7 @@ say に番号札の番号（[12] など）は書かない。「［アイコン�
   async function planCoach(c) {
     const words = c.items.filter((it) => !it.icon).map((it) => it.text).join(" / ");
     const text = `アプリ（共有中のウインドウ名）: ${c.app || "不明"}
-やりたいこと: ${c.goal}
+${c.software ? `使っているソフト: ${c.software}${c.softwareHint ? `（${c.softwareHint}）` : ""}\n` : ""}やりたいこと: ${c.goal}
 画像はいまの画面です。画面上の文字: ${words || "（文字が見つかりませんでした）"}
 
 やりたいことを終えるまでの全手順を、いまの画面から順番に考えて JSON で答えてください。
@@ -566,6 +566,58 @@ ${TEACHER}`;
     };
   }
 
+  // ─── 公式ヘルプの文章からテンプレを作る ─────────────
+  const DOC_SCHEMA = {
+    type: "object",
+    properties: {
+      title: { type: "string" }, app: { type: "string" }, keywords: { type: "array", items: { type: "string" } },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            do: { type: "string" }, where: { type: "string" }, path: { type: "array", items: { type: "string" } },
+            appears: { type: "string" }, input: { type: "string" }, state: { type: "array", items: { type: "string" } },
+          },
+          required: ["do", "where", "path", "appears", "input", "state"],
+        },
+      },
+    },
+    required: ["title", "app", "keywords", "steps"],
+  };
+  const DOC_MAX_CHARS = 12000;   // 渡す文章の長さ（長いページの後ろのほうは関係の薄い案内が多い）
+
+  // c: { text（ページの文章）, url, title（ページの題名）, app（分かっていればソフト名）, hint（そのソフトの画面の作り） }。
+  // 返り値: { title, app, keywords, steps: [{ do, where, path, appears, input, state }] }（手順の説明でなければ steps は空）
+  async function templateFromDoc(c) {
+    const text = `次は${c.app ? ` ${c.app} の` : ""}公式ヘルプのページの文章です（題名: ${c.title || "不明"}、出典: ${c.url || "不明"}）。
+${c.hint ? `そのソフトの画面: ${c.hint}\n` : ""}この文章に書かれている手順だけを使って、初心者に1手ずつ教えるための手順書を JSON で作ってください。
+- title: 何ができるようになる手順か（例: 散布図に近似曲線を追加する）
+- app: 対象のソフトの名前
+- keywords: 初心者が「やりたいこと」を書くときに使いそうな短い言葉を3〜6個（例: 近似曲線、近似直線、トレンドライン）
+- steps: 手順の配列（20個まで）。各手順は次の項目を持つ
+  do: 1つの操作を、初めて使う人が迷わない1文で。押すものの名前は「」で囲み、「〜してください」で終える
+  where: それが画面のどのあたりにあるか（文章に書いてあれば。なければ空文字）
+  path: 押す順のボタン・メニュー名を、文章の表記のまま（例: ["挿入", "グラフ"]）。なければ空の配列
+  appears: その操作のあとにだけ画面に現れる文字（ダイアログやパネルの名前など）。なければ空文字
+  input: 入力する文字や数式。なければ空文字
+  state: Excel・Word・PowerPoint のときだけ、済むと文書の状態に新しく現れる英語の言葉（例: Linear、XYScatter、InsideHorizontal、Table）。分からなければ空の配列
+ルール: 文章に書かれていない操作やボタン名を足さない。Mac と Windows で違うときは Mac の手順を使う。
+いくつもの方法が書かれていたら、いちばん基本的な1つだけを使う。文章が操作の手順の説明でなければ steps を空にする。
+
+ページの文章:
+${String(c.text ?? "").slice(0, DOC_MAX_CHARS)}`;
+    const r = await ask(text, [], DOC_SCHEMA);
+    const list = (v, max) => (Array.isArray(v) ? v.map((x) => str(x, max)).filter(Boolean).slice(0, 8) : []);
+    return {
+      title: str(r.title, 80), app: str(r.app, 30), keywords: list(r.keywords, 30),
+      steps: (Array.isArray(r.steps) ? r.steps : []).map((s) => ({
+        do: dropIconTag(str(s?.do, 160)), where: str(s?.where, 80), path: list(s?.path, 40),
+        appears: str(s?.appears, 40), input: block(s?.input), state: list(s?.state, 40),
+      })).filter((s) => s.do).slice(0, 20),
+    };
+  }
+
   // ─── Office アドイン用: 最初に全体の手順を立てる ─────
   // 1つの手順は「文書が1回変わる操作」（リボンの道順つき）。あとは文書の状態に現れる言葉（state）で、AI を使わずに確かめる
   const OFFICE_PLAN_SCHEMA = {
@@ -665,7 +717,7 @@ JSON で答えてください。answer: 答え（3〜5文。必要なら短い�
   return {
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
-    coach, planCoach, coachOffice, planOffice, explainCode, answerQuestion, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
+    coach, planCoach, coachOffice, planOffice, templateFromDoc, explainCode, answerQuestion, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
     retryDelay, limits, setNotice, DEFAULT_GEMINI_MODEL, GEMINI_MODELS, normalizeModel, listGeminiModels, fillModelSelect,
   };
 })();

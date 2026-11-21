@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-shared=(ai.js som.js)
+shared=(ai.js som.js templates.js)
 if [[ "${1:-}" == "--check" ]]; then
   for f in "${shared[@]}"; do
     cmp -s "js/$f" "extension/shared/$f" || { echo "extension/shared/$f が古いです。tools/sync-extension.sh を実行してください" >&2; exit 1; }

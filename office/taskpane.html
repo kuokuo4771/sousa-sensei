@@ -145,6 +145,18 @@
   </details>
 
   <details>
+    <summary>📘 公式ヘルプからテンプレを作る</summary>
+    <div class="fields">
+      <small>公式ヘルプのページを開き、文章を全部コピー（⌘A → ⌘C）して貼ると、AI が1回でテンプレにします。</small>
+      <a id="docHelp" target="_blank" rel="noopener">公式ヘルプを開く</a>
+      <label>ページの URL <input type="text" id="docUrl" spellcheck="false" placeholder="https://support.microsoft.com/…"></label>
+      <textarea id="docText" rows="5" placeholder="公式ヘルプのページの文章を貼り付け"></textarea>
+      <div class="row"><button id="docMake">テンプレを作る</button></div>
+      <small id="docResult"></small>
+    </div>
+  </details>
+
+  <details>
     <summary>📘 テンプレの書き出し・読み込み</summary>
     <div class="fields">
       <small>自分で保存したテンプレを書き出して、ほかの人や本体（画面共有）に渡せます。受け取ったテンプレは欄に貼り付けて「読み込む」。</small>

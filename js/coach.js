@@ -270,8 +270,14 @@ function startCoach(goal, template = null, { auto = false } = {}) {
   coach.goal = goal;
   coach.source = template ? "template" : "ai";
   coach.template = template;
-  el.tplNote.hidden = !auto;
-  if (auto) el.tplNoteText.textContent = `📘 テンプレ「${template.title}」で案内します（AI を使いません）${template.sample ? "。見本なので、実物と違うことがあります" : ""}`;
+  el.tplNote.hidden = !template;
+  if (template) {
+    el.tplNoteText.textContent = `📘 テンプレ「${template.title}」で案内します（AI を使いません）${template.sample ? "。見本なので、実物と違うことがあります" : ""}`;
+    el.tplSource.hidden = !template.source;
+    el.tplSource.href = template.source || "#";
+    el.tplSource.textContent = template.source ? "出典: 公式ヘルプ" : "";
+    el.tplAiBtn.hidden = !auto;
+  }
   coach.done = [];
   coach.current = null;
   coach.before = null;
@@ -469,9 +475,12 @@ async function makePlan() {
   setWatch("📝 AI が全体の手順を考えています…", "moving");
   try {
     const { items, images, app } = await observeScreen();
-    const plan = await AI.planCoach({ goal: coach.goal, app, image: images.plain, items });
+    const software = currentApp();
+    const plan = await AI.planCoach({
+      goal: coach.goal, app, image: images.plain, items, software, softwareHint: Templates.appInfo(software)?.hint ?? "",
+    });
     coach.plan = plan.steps;
-    coach.planApp = plan.app;
+    coach.planApp = software || plan.app;
     coach.planTried = true;
     addLog(coach.plan.length ? `📝 全体の手順: ${coach.plan.length} 手` : "📝 全体の手順を立てられませんでした");
   } catch (e) {

@@ -230,6 +230,24 @@
       localStorage.removeItem(Templates.KEY);
       if (Templates.importJson(exported) !== 1) return "書き出したテンプレを読み込めない";
     }],
+    ["公式ヘルプから: 貼った文章を AI がこのアプリのテンプレにして、メニューに出す", async () => {
+      const host = { name: "Excel", targetKind: "セル範囲", state: "", async readState() { return this.state; }, async show() { return true; } };
+      answer = (text) => {
+        if (!/公式ヘルプのページの文章です/.test(text) || !text.includes("Microsoft Excel")) throw new Error("ソフトの説明がない");
+        return { title: "列の幅を自動で合わせる", app: "Excel", keywords: ["列の幅"], steps: [
+          { do: "列を選んでください", where: "", path: [], appears: "", input: "", state: [] },
+          { do: "「ホーム」タブの「書式」から「列の幅の自動調整」を選んでください", where: "", path: ["ホーム", "書式", "列の幅の自動調整"], appears: "", input: "", state: [] },
+        ] };
+      };
+      startWith(host);
+      ui.docUrl.value = "https://support.microsoft.com/ja-jp/office/abc";
+      ui.docText.value = "列の幅を変更するには、列を選択して、ホーム タブの書式で列の幅の自動調整をクリックします。".repeat(2);
+      ui.docMake.click();
+      for (let i = 0; i < 40 && ui.docMake.disabled; i++) await wait(50);
+      if (!/✓/.test(ui.docResult.textContent)) return `作れなかった: ${ui.docResult.textContent}`;
+      if (![...ui.tplSelect.options].some((o) => o.text.startsWith("列の幅を自動で合わせる"))) return "テンプレのメニューに出ない";
+      if (ui.docHelp.href !== "https://support.microsoft.com/ja-jp/excel") return `公式ヘルプの入口が違う: ${ui.docHelp.href}`;
+    }],
   ];
 
   // ─── 実行と結果の表示 ──────────────────────────────

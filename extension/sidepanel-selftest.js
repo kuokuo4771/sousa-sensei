@@ -51,8 +51,9 @@ const SidepanelTest = (() => {
       onUpdated: { addListener: (f) => listeners.updated.push(f) },
     },
     scripting: {
-      async executeScript() {
+      async executeScript(opts) {
         if (/^chrome:/.test(page.url)) throw new Error("Cannot access a chrome:// URL");
+        if (opts?.func) return [{ result: { text: page.docText ?? "", title: page.title, url: page.url } }];
         injected++;
         page.agent = true;
       },
@@ -240,6 +241,30 @@ const SidepanelTest = (() => {
       for (const f of listeners.activated) f({ tabId: 7 });
       if (!(await until(() => highlights().length))) return "戻ってきても光らせ直していません";
       if (highlights()[0].id !== first.id || highlights()[0].gen !== first.gen) return `違う場所を光らせ直しました: ${JSON.stringify(highlights()[0])}`;
+    }],
+    ["公式ヘルプのページから、AI がテンプレを作ってコピーできる形で出す", async () => {
+      const real = AI.templateFromDoc;
+      let got = null;
+      AI.templateFromDoc = async (c) => {
+        got = c;
+        return { title: "立方体を追加する", app: "Blender", keywords: ["立方体"], steps: [
+          { do: "「追加」メニューの「メッシュ」から「立方体」を選んでください", where: "", path: ["追加", "メッシュ", "立方体"], appears: "", input: "", state: [] },
+        ] };
+      };
+      Object.assign(page, { url: "https://docs.blender.org/manual/ja/latest/modeling/meshes/primitives.html", title: "プリミティブ — Blender Manual",
+        docText: "メッシュのプリミティブを追加するには、3Dビューポートで 追加 ‣ メッシュ を選びます。立方体は…" });
+      try {
+        $("docMake").click();
+        if (!(await until(() => !$("docJson").hidden))) return `作れなかった: ${$("docResult").textContent}`;
+        if (got.app !== "Blender" || !got.text.includes("メッシュのプリミティブ")) return `ページの文章やソフトを渡していない: ${got.app}`;
+        const t = JSON.parse($("docJson").value)[0];
+        if (t.source !== page.url || t.app !== "Blender" || t.steps[0].path.length !== 3) return `テンプレの中身が違う: ${$("docJson").value.slice(0, 120)}`;
+        if (Templates.importJson($("docJson").value) !== 1) return "書き出した形を読み込めない";
+      } finally {
+        AI.templateFromDoc = real;
+        localStorage.removeItem(Templates.KEY);
+        delete page.docText;
+      }
     }],
     ["AI が OFF なら、設定を促す", async () => {
       const on = AI.enabled;

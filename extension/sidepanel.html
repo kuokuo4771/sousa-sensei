@@ -69,6 +69,8 @@
   details .fields { display: grid; gap: 6px; margin-top: 6px; }
   details label { display: flex; gap: 6px; align-items: baseline; }
   small { color: var(--muted); display: block; }
+  textarea { width: 100%; padding: 6px 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--panel); color: var(--ink); resize: vertical; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -138,6 +140,18 @@
   <div class="watch" id="watch"></div>
   <ul class="log" id="log"></ul>
 
+  <details id="docBox">
+    <summary>📘 このページからテンプレを作る（公式ヘルプのページで）</summary>
+    <div class="fields">
+      <small>Excel・Photoshop・Blender などの公式ヘルプのページを開いて押すと、AI がページの手順を1回でテンプレにします。
+        できたテンプレは「コピー」して、本体（⚙ 設定 → 📘 テンプレの管理）や Office 版の「読み込む」に貼り付けて使います。</small>
+      <label>ソフト <select id="docApp"></select></label>
+      <div class="row"><button class="primary" id="docMake">このページからテンプレを作る</button><button id="docCopy" hidden>📋 コピー</button></div>
+      <small id="docResult"></small>
+      <textarea id="docJson" rows="6" spellcheck="false" hidden></textarea>
+    </div>
+  </details>
+
   <details>
     <summary>設定（AI・学習モード・読み上げ）</summary>
     <div class="fields">
@@ -159,6 +173,7 @@
 
   <script src="shared/ai.js"></script>
   <script src="shared/som.js"></script>
+  <script src="shared/templates.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

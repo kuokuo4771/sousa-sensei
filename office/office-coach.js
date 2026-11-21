@@ -16,7 +16,7 @@ const ui = Object.fromEntries([
   "targetText", "showBtn", "inputBox", "inputText", "copyBtn", "planBox", "planList", "doneCard", "saveTplBtn",
   "aiBox", "aiText", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
   "askBtn", "nextBtn", "restartBtn", "watch", "log", "aiProvider", "geminiKey", "geminiModel", "aiSave", "aiState", "voiceOn",
-  "planOn", "tplText", "tplExport", "tplImport", "tplResult",
+  "planOn", "tplText", "tplExport", "tplImport", "tplResult", "docHelp", "docUrl", "docText", "docMake", "docResult",
 ].map((id) => [id, $(id)]));
 
 const office = { host: null };   // office-host.js の ExcelHost / WordHost / PowerPointHost
@@ -420,6 +420,29 @@ ui.tplImport.addEventListener("click", () => {
   }
 });
 
+// 公式ヘルプの文章から、このアプリのテンプレを作る（AI を1回使う）
+ui.docMake.addEventListener("click", async () => {
+  const text = ui.docText.value.trim();
+  const app = office.host?.name ?? "";
+  if (text.length < 40) { ui.docResult.textContent = "公式ヘルプのページの文章を貼り付けてください"; return; }
+  if (!AI.enabled()) { ui.docResult.textContent = "テンプレを作るには、下の「AI の設定」で Gemini の APIキーを入れてください"; return; }
+  ui.docMake.disabled = true;
+  ui.docResult.textContent = "🤖 AI が公式ヘルプを読んで、テンプレを作っています…";
+  try {
+    const url = ui.docUrl.value.trim();
+    const r = await AI.templateFromDoc({ text, url, app, hint: Templates.appInfo(app)?.hint ?? "" });
+    const t = r.steps.length ? Templates.save(Templates.fromDoc(r, { url, app })) : null;
+    if (!t) { ui.docResult.textContent = "✗ この文章からは手順を読み取れませんでした"; return; }
+    ui.docText.value = "";
+    ui.docResult.textContent = `✓ テンプレ「${t.title}」（${t.steps.length} 手）を作りました`;
+    fillTplSelect();
+  } catch (e) {
+    ui.docResult.textContent = `✗ 作れませんでした: ${e.message}`;
+  } finally {
+    ui.docMake.disabled = false;
+  }
+});
+
 // ─── ボタン ─────────────────────────────────────────
 ui.goalForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -461,6 +484,7 @@ ui.aiSave.addEventListener("click", () => {
 function startWith(host) {
   office.host = host;
   ui.notice.hidden = !!host;
+  ui.docHelp.href = Templates.appInfo(host?.name)?.help ?? "#";
   fillTplSelect();
   render();
   if (host) {

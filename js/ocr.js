@@ -90,6 +90,7 @@ function readScreen({ keepShot = false, icons = true } = {}) {
       }))
       .filter((w) => w.t);
     const read = { words, text: words.map((w) => w.t).join(""), w: canvas.width, h: canvas.height, shot, icons: [] };
+    noteApp(read.text, state.stream?.getVideoTracks?.()[0]?.label ?? "");
     if (gray) {
       read.icons = findIcons(gray, canvas.width, canvas.height, words);
     }

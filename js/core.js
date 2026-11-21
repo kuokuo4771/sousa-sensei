@@ -38,6 +38,7 @@ const state = {
   surface: null,        // 共有している面: monitor（画面全体）/ window（ウインドウ）/ browser（タブ）
   lastChangeAt: 0,      // 最後に画面が変わった（または新しい手順を出した）時刻
   stuckToken: -1,       // 「しばらく変化がない」助け舟をどのステップで出したか（1ステップ1回まで）
+  detectedApp: "",      // 画面から見分けたソフト（「使うソフト」が自動のとき使う）
   noAskUntil: 0,        // 「まだ」と答えたあと、この時刻までは「できた？」を聞き直さない
   plannedChanged: false, // 計画の手順の間に画面が変わり、まだ「できた？」を聞いていない
   target: null,         // 光らせる場所 { box: {x0,y0,x1,y1}（画面に対する割合）, name, say }
@@ -54,6 +55,7 @@ const el = Object.fromEntries([
   "doneCard", "confirmBox", "confirmText", "yesBtn", "notYetBtn", "watch", "log",
   "ocrMeta", "ocrText", "backBtn", "restartBtn", "nextBtn",
   "autoBtn", "voiceBtn", "countdown", "countdownBar",
+  "appSelect", "tplSource", "docApp", "docHelp", "docUrl", "docText", "docMake",
   "planBox", "planList", "planBtn", "tplNote", "tplNoteText", "tplAiBtn", "saveTplBtn", "tplBtn", "tplDialog", "tplList",
   "tplText", "tplResult", "tplExport", "tplImport", "tplClose", "doneTitle", "doneNote", "loopBox", "finishBtn", "continueBtn", "shareTopBtn", "captureFoot", "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
   "aiDialog", "builtinRadio", "builtinState", "builtinPrepare", "geminiFields", "geminiKey", "geminiModel",
@@ -118,3 +120,23 @@ const gridCanvas = document.createElement("canvas");
 gridCanvas.width = GRID_W; gridCanvas.height = GRID_H;
 const gridCtx = gridCanvas.getContext("2d", { willReadFrequently: true });
 
+// ─── 使うソフト ─────────────────────────────────────
+// 選んだソフト、なければ画面から見分けたソフト（分からなければ ""）。テンプレ選びと AI への説明に使う
+function currentApp() { return el.appSelect.value || state.detectedApp; }
+
+function renderAppSelect() {
+  const auto = state.detectedApp ? `自動（${state.detectedApp} を検出）` : "自動（画面から見分けます）";
+  if (!el.appSelect.options.length) {
+    el.appSelect.append(new Option(auto, ""), ...Templates.apps.map((a) => new Option(a.id, a.id)));
+  }
+  el.appSelect.options[0].text = auto;
+}
+
+// 画面の文字やウインドウ名から、使っているソフトを見分けて覚える
+function noteApp(text, label = "") {
+  const app = Templates.detectApp(text, label);
+  if (!app || app === state.detectedApp) return;
+  state.detectedApp = app;
+  renderAppSelect();
+  if (!el.appSelect.value) addLog(`使うソフト: ${app}（画面から検出）`);
+}
