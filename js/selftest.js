@@ -950,6 +950,49 @@ const SelfTest = (() => {
       if (lesson().steps[0].text !== "上の「フィルター」メニューをクリックしてください") return `メニューの案内が違う: ${lesson().steps[0].text}`;
       if (fake.aiCalls.length !== 1) return "テンプレを作ったあとに AI を呼んだ";
     }],
+    ["発表: 完了すると、かかった時間・手数・AI の回数を出し、紙ふぶきを出す", async () => {
+      AI.save({ provider: "off" });
+      el.goalInline.value = "スライドに表を入れたい";
+      el.goalForm.requestSubmit();
+      await settle();
+      for (let i = 0; i < 3; i++) el.nextBtn.click();
+      if (el.doneCard.hidden) return "完了にならない";
+      if (!/⏱ \d+秒　👣 3 手　🤖 AI 0 回（AI なしで完了！）/.test(el.doneStats.textContent)) return `成績の表示が違う: ${el.doneStats.textContent}`;
+      const pieces = document.querySelectorAll("canvas.confetti").length;
+      if (!pieces) return "紙ふぶきが出ない";
+      render();
+      if (document.querySelectorAll("canvas.confetti").length !== pieces) return "描き直すたびに紙ふぶきが出る";
+    }],
+    ["発表モード: 文字とボタンを大きくし、元に戻せる", async () => {
+      const was = prefs.present;
+      el.presentBtn.click();
+      const on = document.body.classList.contains("present") && parseFloat(getComputedStyle(el.stepText).fontSize) >= 26;
+      el.presentBtn.click();
+      const off = !document.body.classList.contains("present");
+      prefs.present = was;
+      savePrefs();
+      renderPrefs();
+      if (!on) return "発表モードで文字が大きくならない";
+      if (!off) return "発表モードを切れない";
+    }],
+    ["声で: 🎤 で話したことをやりたいことに入れて、そのまま始める", async () => {
+      AI.save({ provider: "off" });
+      let rec = null;
+      const realRec = window.SpeechRecognition;
+      window.SpeechRecognition = class { start() { rec = this; } stop() { this.onend?.(); } };
+      try {
+        el.voiceGoalBtn.click();
+        if (!rec || rec.lang !== "ja-JP") return "日本語の音声認識を始めていない";
+        if (!/聞いています/.test(el.voiceGoalBtn.textContent)) return "聞いていることを表示していない";
+        rec.onresult({ results: [Object.assign([{ transcript: "スライドに表を入れたい" }], { isFinal: true })] });
+        await settle();
+        if (el.goalInline.value !== "スライドに表を入れたい") return `話した言葉が入らない: ${el.goalInline.value}`;
+        if (coach.source !== "template" || !lesson().planned) return "話し終わっても始まらない";
+        if (el.voiceGoalBtn.textContent !== "🎤") return "ボタンが元に戻らない";
+      } finally {
+        if (realRec) window.SpeechRecognition = realRec; else delete window.SpeechRecognition;
+      }
+    }],
     ["手順を先に考える: 計画を立てられなくても、一手ずつの案内は続く", async () => {
       AI.save({ provider: "builtin" });
       prefs.plan = true;

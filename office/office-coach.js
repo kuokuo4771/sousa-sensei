@@ -14,7 +14,7 @@ const ui = Object.fromEntries([
   "appName", "notice", "goalForm", "goalInput", "tplSelect", "tplNote", "tplNoteText", "tplAiBtn",
   "stepCard", "stepNum", "stepText", "stepHint", "whereText", "pathRow", "targetRow",
   "targetText", "showBtn", "inputBox", "inputText", "copyBtn", "planBox", "planList", "doneCard", "saveTplBtn",
-  "aiBox", "aiText", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
+  "doneStats", "aiBox", "aiText", "confirmBox", "confirmText", "yesBtn", "notYetBtn",
   "askBtn", "nextBtn", "restartBtn", "watch", "log", "aiProvider", "geminiKey", "geminiModel", "aiSave", "aiState", "voiceOn",
   "planOn", "tplText", "tplExport", "tplImport", "tplResult", "docHelp", "docUrl", "docText", "docMake", "docResult",
 ].map((id) => [id, $(id)]));
@@ -26,6 +26,7 @@ const run = {
   mode: "ai",          // "plan": 決まった手順（テンプレか AI の計画）で進む / "ai": 一手ごとに AI に聞く
   source: "",          // "template" | "ai"（計画の出どころ）
   steps: [], index: 0, startState: "", askTimer: 0,
+  startedAt: 0, startCalls: 0,   // 始めた時刻と、そのときの AI の呼び出し回数（完了したときの成績に使う）
 };
 
 // ─── 設定（この作業ウィンドウに保存） ─────────────────
@@ -108,7 +109,7 @@ function startGoal(goal, { template = null, auto = false, useAi = false } = {}) 
   clearTimeout(run.askTimer);
   Object.assign(run, {
     goal, done: [], current: null, path: [], target: "", input: "", where: "", before: null, finished: false,
-    mode: "ai", source: "", steps: [], index: 0, startState: "",
+    mode: "ai", source: "", steps: [], index: 0, startState: "", startedAt: Date.now(), startCalls: AI.totalCalls(),
   });
   ui.aiBox.hidden = true;
   ui.confirmBox.hidden = true;
@@ -229,6 +230,10 @@ function finish() {
   ui.confirmBox.hidden = true;
   ui.aiBox.hidden = true;
   render();
+  ui.doneStats.textContent = summaryText({
+    ms: Date.now() - run.startedAt, steps: run.mode === "plan" ? run.steps.length : run.done.length, aiCalls: AI.totalCalls() - run.startCalls,
+  });
+  celebrate(document);
   addLog("🎉 完了");
   speak("できました。やりたいことは完了です。");
 }

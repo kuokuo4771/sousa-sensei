@@ -267,6 +267,7 @@ const MAX_REASKS = 2;   // 「できた」のあと次の一手が返ってこ�
 
 // template: テンプレで案内する（AI を使わない）。auto: やりたいことから自動で選んだテンプレ（AI に切り替えるボタンを出す）
 function startCoach(goal, template = null, { auto = false } = {}) {
+  markStart();
   coach.goal = goal;
   coach.source = template ? "template" : "ai";
   coach.template = template;

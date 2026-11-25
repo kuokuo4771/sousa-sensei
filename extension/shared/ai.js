@@ -254,9 +254,11 @@ Photoshop・Premiere・ブラウザなど何でも）を初めて使う人に、
 
   // ─── 共通 ───────────────────────────────────
   // images: 一緒に渡す画像（キャンバス）の配列。文中で「画像1」「画像2」と順番どおりに呼ぶ
+  let totalCalls = 0;   // これまでに AI を呼んだ回数（完了したときの成績に出す）
   async function ask(text, images, schema, geminiOpts = {}) {
     if (!enabled()) throw new Error("AI が OFF です。「🤖 AI」から設定してください");
     await reserve();
+    totalCalls++;
     const raw = settings.provider === "builtin"
       ? await askBuiltin(text, images, schema)
       : await askGemini(`${text}\n\n次の JSON スキーマに合う JSON だけを返してください:\n${JSON.stringify(schema)}`, images, geminiOpts);
@@ -718,6 +720,6 @@ JSON で答えてください。answer: 答え（3〜5文。必要なら短い�
     settings, save, enabled, label, usage,
     builtinStatus, prepareBuiltin,
     coach, planCoach, coachOffice, planOffice, templateFromDoc, explainCode, answerQuestion, ping, parseJson, IMAGE_MAX_SIDE, resetForTest,
-    retryDelay, limits, setNotice, DEFAULT_GEMINI_MODEL, GEMINI_MODELS, normalizeModel, listGeminiModels, fillModelSelect,
+    retryDelay, limits, setNotice, totalCalls: () => totalCalls, DEFAULT_GEMINI_MODEL, GEMINI_MODELS, normalizeModel, listGeminiModels, fillModelSelect,
   };
 })();

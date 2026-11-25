@@ -190,6 +190,7 @@
       await wait(POLL_MS * 2 + SETTLE_MS + 300);
       if (!run.finished) return `完了しない（ステップ ${run.index + 1}）`;
       if (aiCalls.length) return `AI を ${aiCalls.length} 回呼んだ`;
+      if (!/👣 4 手　🤖 AI 0 回/.test(ui.doneStats.textContent)) return `成績の表示が違う: ${ui.doneStats.textContent}`;
     }],
     ["AI の計画: AI は最初の1回だけ。確かめられないときは落ち着いてから聞き、テンプレに保存すると次は AI を使わない", async () => {
       const host = { name: "Word", targetKind: "文章", state: "選択中の文章: なし", shown: [],

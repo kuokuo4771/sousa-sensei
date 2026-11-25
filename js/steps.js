@@ -41,6 +41,16 @@ function render() {
   el.stepCard.hidden = finished;
   el.doneCard.hidden = !finished;
   if (finished) {
+    // 完了した瞬間に1回だけ紙ふぶきを出し、成績（時間・手数・AI の回数）を見せる
+    if (!state.finishedAt) {
+      state.finishedAt = Date.now();
+      celebrate(el.doneCard.ownerDocument);
+      // 成績が案内パネルの下に隠れないよう、完了カードまでスクロールする
+      requestAnimationFrame(() => el.doneCard.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    }
+    el.doneStats.textContent = summaryText({
+      ms: state.finishedAt - state.startedAt, steps: L.coach ? coach.done.length : total, aiCalls: AI.totalCalls() - state.startCalls,
+    });
     el.doneTitle.textContent = L.coach || L.planned ? "できました！" : "レッスン完了！";
     el.doneNote.textContent = L.coach || L.planned
       ? "お疲れさまでした。「🧭 新しくはじめる」で次のやりたいことを案内します。"
@@ -82,6 +92,7 @@ function fixedLessonIds() { return Object.keys(LESSONS).filter((id) => !LESSONS[
 function loadLesson(id) {
   if (LESSONS[id]?.coach) { startCoach(coach.goal); return; }
   state.lessonId = id;
+  markStart();
   el.lessonSelect.value = LESSONS[id].planned ? "idle" : id;
   if (!lesson().idle) addLog(`レッスン開始: ${lesson().name}`);
   goTo(0);

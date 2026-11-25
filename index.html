@@ -476,6 +476,20 @@
   .lesson-box-body { display: grid; gap: 8px; margin-top: 8px; }
   .tpl-note { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-radius: 10px;
     background: var(--ai-soft); font-size: 12.5px; }
+  .done-stats { margin: 8px 0 0; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #voiceGoalBtn.listening { border-color: var(--accent); color: var(--accent); animation: pulse-dot 1s ease-in-out infinite; }
+  /* 発表モード: 教室の後ろからでも読めるよう、案内の文字とボタンを大きくする */
+  body.present .step-num { font-size: 14px; }
+  body.present .step-text { font-size: 26px; line-height: 1.4; }
+  body.present .step-hint, body.present .plan-box ol, body.present .watch, body.present .confirm p { font-size: 17px; }
+  body.present .btn, body.present .goal-form input { font-size: 17px; padding: 10px 16px; }
+  body.present .guide-say { font-size: 20px; }
+  body.present .guide-box, body.present .target-box { border-width: 5px; }
+  body.present .done-card strong { font-size: 30px; }
+  body.present .done-emoji { font-size: 64px; }
+  body.present .done-stats { font-size: 20px; }
+  body.present .tutor-name { font-size: 18px; }
+  body.present .progress-head strong { font-size: 17px; }
   .app-pick { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-soft); }
   .app-pick select { flex: 1; min-width: 0; padding: 5px 8px; font: inherit; border: 1px solid var(--border); border-radius: 8px;
     background: var(--panel-alt); color: var(--ink); }
@@ -566,6 +580,7 @@
         <button class="icon-btn" id="aiBtn" title="AI の設定（Chrome 内蔵AI または Gemini API 無料枠）">🤖 AI OFF</button>
         <button class="icon-btn" id="ocrBtn" title="画面の文字を読んで、光らせる場所を探し、できたかを自動で確かめます（ブラウザ内で処理）">🔤 文字認識 ON</button>
         <button class="icon-btn" id="autoBtn" title="ON にすると「できた？」のあと数秒待って自動で次へ進みます">⏩ 自動で次へ OFF</button>
+        <button class="icon-btn" id="presentBtn" title="教室で映すときに。文字やボタンを大きくします">🎤 発表モード OFF</button>
         <button class="icon-btn" id="planBtn" title="実験中: ON だと、AI が最初に全体の手順を1回だけ考え、あとは文字認識で進めます。OFF だと、一手ごとに AI に聞きます">📝 手順を先に考える ON</button>
         <button class="icon-btn" id="tplBtn" title="自分で保存したテンプレの書き出し・読み込み">📘 テンプレの管理</button>
         <button class="icon-btn" id="voiceBtn" title="次の手順を音声で読み上げます">🔊 音声 ON</button>
@@ -651,6 +666,7 @@
           <form class="goal-form" id="goalForm">
             <input type="text" id="goalInline" autocomplete="off"
                    placeholder="🧭 やりたいことを書く（例: 表を入れたい）">
+            <button class="btn" id="voiceGoalBtn" type="button" title="押してから、やりたいことを話してください">🎤</button>
             <button class="btn primary" type="submit">開始</button>
           </form>
 
@@ -699,6 +715,7 @@
             <div class="done-emoji">🎉</div>
             <strong id="doneTitle"></strong>
             <span id="doneNote"></span>
+            <p class="done-stats" id="doneStats"></p>
             <button class="btn" id="saveTplBtn" type="button" hidden>📘 この手順をテンプレに保存</button>
           </div>
 
@@ -839,6 +856,7 @@
 <script src="js/ai.js"></script>
 <script src="js/lessons.js"></script>
 <script src="js/templates.js"></script>
+<script src="js/effects.js"></script>
 <script src="js/core.js"></script>
 <script src="js/steps.js"></script>
 <script src="js/capture.js"></script>

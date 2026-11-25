@@ -39,6 +39,9 @@ const state = {
   lastChangeAt: 0,      // 最後に画面が変わった（または新しい手順を出した）時刻
   stuckToken: -1,       // 「しばらく変化がない」助け舟をどのステップで出したか（1ステップ1回まで）
   detectedApp: "",      // 画面から見分けたソフト（「使うソフト」が自動のとき使う）
+  startedAt: 0,         // いまの案内を始めた時刻と、そのときの AI の呼び出し回数（完了したときの成績に使う）
+  startCalls: 0,
+  finishedAt: 0,        // 完了した時刻（0 ならまだ）。紙ふぶきを1回だけ出すためにも使う
   noAskUntil: 0,        // 「まだ」と答えたあと、この時刻までは「できた？」を聞き直さない
   plannedChanged: false, // 計画の手順の間に画面が変わり、まだ「できた？」を聞いていない
   target: null,         // 光らせる場所 { box: {x0,y0,x1,y1}（画面に対する割合）, name, say }
@@ -57,7 +60,7 @@ const el = Object.fromEntries([
   "autoBtn", "voiceBtn", "countdown", "countdownBar",
   "appSelect", "tplSource", "docApp", "docHelp", "docUrl", "docText", "docMake",
   "planBox", "planList", "planBtn", "tplNote", "tplNoteText", "tplAiBtn", "saveTplBtn", "tplBtn", "tplDialog", "tplList",
-  "tplText", "tplResult", "tplExport", "tplImport", "tplClose", "doneTitle", "doneNote", "loopBox", "finishBtn", "continueBtn", "shareTopBtn", "captureFoot", "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
+  "tplText", "tplResult", "tplExport", "tplImport", "tplClose", "doneTitle", "doneNote", "doneStats", "voiceGoalBtn", "presentBtn", "loopBox", "finishBtn", "continueBtn", "shareTopBtn", "captureFoot", "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
   "aiDialog", "builtinRadio", "builtinState", "builtinPrepare", "geminiFields", "geminiKey", "geminiModel",
   "aiTestResult", "aiTest", "aiClose", "aiSave", "goalForm", "goalInline", "settingsBtn", "settingsPop",
   "webBtn", "webDialog", "webMissing", "webReady", "webTabs", "webResult", "webRefresh", "webClose", "webDisconnect",
@@ -69,7 +72,7 @@ const el = Object.fromEntries([
 //   voice   : 次の手順や「できましたか？」を読み上げる
 //   plan    : おまかせの最初に AI に全体の手順を立てさせ、あとはその計画どおりに AI なしで進める（実験中）
 const AUTO_NEXT_SEC = 4;
-const prefs = { autoNext: false, voice: true, plan: true };
+const prefs = { autoNext: false, voice: true, plan: true, present: false };
 try { Object.assign(prefs, JSON.parse(localStorage.getItem("slideSenseiPrefs") || "{}")); } catch { /* 保存できない環境では初期値のまま */ }
 function savePrefs() {
   try { localStorage.setItem("slideSenseiPrefs", JSON.stringify(prefs)); } catch { /* 同上 */ }
@@ -78,12 +81,20 @@ function renderPrefs() {
   el.autoBtn.textContent = `⏩ 自動で次へ ${prefs.autoNext ? "ON" : "OFF"}`;
   el.voiceBtn.textContent = `${prefs.voice ? "🔊" : "🔈"} 音声 ${prefs.voice ? "ON" : "OFF"}`;
   el.planBtn.textContent = `📝 手順を先に考える ${prefs.plan ? "ON" : "OFF"}`;
+  el.presentBtn.textContent = `🎤 発表モード ${prefs.present ? "ON" : "OFF"}`;
+  document.body.classList.toggle("present", prefs.present);
+  if (state.pip && !state.pip.closed) state.pip.document.body.classList.toggle("present", prefs.present);
 }
 el.autoBtn.addEventListener("click", () => {
   prefs.autoNext = !prefs.autoNext;
   savePrefs();
   renderPrefs();
   if (!el.confirmBox.hidden) startCountdown();
+});
+el.presentBtn.addEventListener("click", () => {
+  prefs.present = !prefs.present;
+  savePrefs();
+  renderPrefs();
 });
 el.planBtn.addEventListener("click", () => {
   prefs.plan = !prefs.plan;
@@ -139,4 +150,11 @@ function noteApp(text, label = "") {
   state.detectedApp = app;
   renderAppSelect();
   if (!el.appSelect.value) addLog(`使うソフト: ${app}（画面から検出）`);
+}
+
+// 案内を始めたことを覚える（完了したときに、かかった時間と AI を使った回数を出すため）
+function markStart() {
+  state.startedAt = Date.now();
+  state.startCalls = AI.totalCalls();
+  state.finishedAt = 0;
 }

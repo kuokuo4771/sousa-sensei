@@ -141,11 +141,13 @@ el.pipBtn.addEventListener("click", () => {
 
 // 案内パネルを最前面の小窓へ移す。開いた小窓を返す
 async function openPip() {
-  const pip = await documentPictureInPicture.requestWindow({ width: 380, height: 600 });
+  // 発表モードでは文字が大きいので、ミニ窓も大きめに開く
+  const pip = await documentPictureInPicture.requestWindow(prefs.present ? { width: 520, height: 780 } : { width: 380, height: 600 });
   pip.document.title = "そうさ先生";
   document.querySelectorAll("style, link[rel=stylesheet]").forEach((n) => pip.document.head.append(n.cloneNode(true)));
   syncTheme(pip.document);
   pip.document.body.classList.add("pip");
+  pip.document.body.classList.toggle("present", prefs.present);
   pip.document.body.append(el.tutor);
   el.tutorHomeNote.hidden = false;
   el.pipBtn.textContent = "📌 ミニ窓を閉じる";
@@ -286,4 +288,40 @@ el.docMake.addEventListener("click", async () => {
   } finally {
     el.docMake.disabled = false;
   }
+});
+
+// ─── 🎤 やりたいことを声で言う ───────────────────────
+// Chrome の音声認識を使う（声は Google に送られて文字になる）。話し終わったら、そのまま「開始」する
+const SpeechRec = () => window.SpeechRecognition || window.webkitSpeechRecognition;
+el.voiceGoalBtn.hidden = !SpeechRec();
+let listening = null;
+el.voiceGoalBtn.addEventListener("click", () => {
+  if (listening) { listening.stop(); return; }
+  const Rec = SpeechRec();
+  if (!Rec) return;
+  const rec = new Rec();
+  rec.lang = "ja-JP";
+  rec.interimResults = true;
+  rec.onresult = (e) => {
+    el.goalInline.value = [...e.results].map((r) => r[0].transcript).join("");
+    if (e.results[e.results.length - 1].isFinal) {
+      rec.stop();
+      el.goalForm.requestSubmit();
+    }
+  };
+  rec.onerror = (e) => {
+    showAi(e.error === "not-allowed"
+      ? "マイクが使えません。Chrome のアドレスバーの左のアイコンから、マイクを許可してください。"
+      : `声を聞き取れませんでした（${e.error}）。もう一度 🎤 を押して話してください。`, "error");
+  };
+  rec.onend = () => {
+    listening = null;
+    el.voiceGoalBtn.classList.remove("listening");
+    el.voiceGoalBtn.textContent = "🎤";
+  };
+  listening = rec;
+  el.voiceGoalBtn.classList.add("listening");
+  el.voiceGoalBtn.textContent = "🎙 聞いています…";
+  el.goalInline.value = "";
+  rec.start();
 });
