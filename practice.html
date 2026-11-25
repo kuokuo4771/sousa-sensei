@@ -79,8 +79,9 @@
   .theme-card.on { border-color: var(--select); box-shadow: 0 0 0 2px color-mix(in oklab, var(--select) 35%, transparent); }
   .theme-card i { display: block; height: 6px; border-radius: 3px; }
 
+  /* リボンは横にスクロールするので、その中に開くと切れてしまう。ページの上に、ボタンの真下の位置で開く */
   .menu {
-    position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 4px;
+    position: fixed; z-index: 20; margin-top: 4px;
     background: white; border: 1px solid var(--border); border-radius: 8px;
     box-shadow: 0 10px 30px rgba(0,0,0,0.15); padding: 10px; display: grid; gap: 8px;
     font-size: 12.5px; text-align: left; white-space: nowrap;
@@ -95,6 +96,14 @@
   .menu .palette { display: grid; grid-template-columns: repeat(6, 22px); gap: 6px; }
   .menu .swatch { width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.15); }
   .menu .swatch:hover { outline: 2px solid var(--select); }
+  /* 表の挿入: マス目の上でマウスを動かして行と列の数を選ぶ（本物の PowerPoint と同じ） */
+  .menu .tgrid { display: grid; grid-template-columns: repeat(8, 18px); gap: 3px; }
+  .menu .tgrid button { width: 18px; height: 18px; padding: 0; border: 1px solid #bbb; background: #fff; border-radius: 2px; }
+  .menu .tgrid button.on { background: #fbe3dc; border-color: #b7472a; }
+  .menu .tsize { font-size: 12px; color: var(--muted); text-align: center; }
+  .slide .table { position: absolute; left: 8%; top: 40%; width: 84%; height: 44%; display: grid; border: 2px solid #4472c4; }
+  .slide .table i { border: 1px solid #8eaadb; background: #fff; }
+  .slide .table i.head { background: #4472c4; }
 
   /* ─── 作業エリア ─── */
   .work { display: grid; grid-template-columns: 200px 1fr; min-height: 0; }
@@ -211,9 +220,9 @@ const THEMES = [
 const COLORS = ["#4472c4", "#ed7d31", "#a5a5a5", "#ffc000", "#5b9bd5", "#70ad47",
                 "#c00000", "#7030a0", "#00b050", "#002060", "#ff66cc", "#000000"];
 
-// スライド: { layout: "title" | "content", fields: { title, subtitle | body }, shapes: [{x,y,w,h,color}]（割合） }
+// スライド: { layout: "title" | "content", fields: { title, subtitle | body }, shapes: [{x,y,w,h,color}]（割合）, tables: [{rows, cols}] }
 const doc = {
-  slides: [{ layout: "title", fields: { title: "", subtitle: "" }, shapes: [] }],
+  slides: [{ layout: "title", fields: { title: "", subtitle: "" }, shapes: [], tables: [] }],
   current: 0,
   theme: 0,
 };
@@ -237,7 +246,7 @@ const RIBBONS = {
   ],
   insert: [
     [["🆕", "新しいスライド", addSlide]],
-    [["▦", "表"], ["🖼", "画像"]],
+    [["▦", "表", toggleTableMenu], ["🖼", "画像"]],
     [["⬠", "図形", toggleShapeMenu], ["☺", "アイコン"], ["◇", "SmartArt"], ["📊", "グラフ"]],
     [["🅰", "テキストボックス"], ["▭", "ヘッダーとフッター"], ["𝒜", "ワードアート"], ["#", "スライド番号"]],
     [["🎬", "ビデオ"], ["🔊", "オーディオ"]],
@@ -315,14 +324,17 @@ function closeMenu() { openMenu?.remove(); openMenu = null; }
 document.addEventListener("click", closeMenu);
 
 function showMenu(button, build) {
-  const wasOpen = openMenu && openMenu.parentElement === button;
+  const wasOpen = openMenu && openMenu.owner === button;
   closeMenu();
   if (wasOpen) return;
   const m = document.createElement("div");
   m.className = "menu";
   m.addEventListener("click", (e) => e.stopPropagation());
   build(m);
-  button.append(m);
+  const r = button.getBoundingClientRect();
+  Object.assign(m.style, { left: `${r.left}px`, top: `${r.bottom}px` });
+  document.body.append(m);
+  m.owner = button;
   openMenu = m;
 }
 
@@ -347,6 +359,32 @@ function toggleShapeMenu(button) {
   });
 }
 
+function toggleTableMenu(button) {
+  showMenu(button, (m) => {
+    const COLS = 8, ROWS = 6;
+    m.innerHTML = `<h4>表の挿入</h4><div class="tgrid"></div><div class="tsize">表の挿入</div>`;
+    const grid = m.querySelector(".tgrid"), size = m.querySelector(".tsize");
+    for (let r = 1; r <= ROWS; r++) {
+      for (let c = 1; c <= COLS; c++) {
+        const b = document.createElement("button");
+        b.title = `${c} x ${r} 表`;
+        b.addEventListener("mouseenter", () => {
+          for (const cell of grid.children) cell.classList.toggle("on", cell.dataset.c <= c && cell.dataset.r <= r);
+          size.textContent = `${c} x ${r} 表`;
+        });
+        b.addEventListener("click", () => {
+          closeMenu();
+          doc.slides[doc.current].tables.push({ rows: r, cols: c });
+          renderAll();
+        });
+        b.dataset.c = c;
+        b.dataset.r = r;
+        grid.append(b);
+      }
+    }
+  });
+}
+
 function toggleFillMenu(button) {
   showMenu(button, (m) => {
     m.innerHTML = `<h4>テーマの色</h4><div class="palette"></div>`;
@@ -367,7 +405,7 @@ function toggleFillMenu(button) {
 
 // ─── スライド操作 ──────────────────────────────────────
 function addSlide() {
-  doc.slides.push({ layout: "content", fields: { title: "", body: "" }, shapes: [] });
+  doc.slides.push({ layout: "content", fields: { title: "", body: "" }, shapes: [], tables: [] });
   doc.current = doc.slides.length - 1;
   selectShape(null);
   renderAll();
@@ -428,6 +466,18 @@ function renderSlide() {
     d.addEventListener("pointerdown", (e) => startMove(e, i));
     slideEl.append(d);
   });
+  for (const t of s.tables ?? []) {
+    const d = document.createElement("div");
+    d.className = "table";
+    d.style.gridTemplateColumns = `repeat(${t.cols}, 1fr)`;
+    d.style.gridTemplateRows = `repeat(${t.rows}, 1fr)`;
+    for (let i = 0; i < t.rows * t.cols; i++) {
+      const cell = document.createElement("i");
+      if (i < t.cols) cell.className = "head";
+      d.append(cell);
+    }
+    slideEl.append(d);
+  }
   const bar = document.createElement("div");
   bar.className = "bar";
   slideEl.append(bar);

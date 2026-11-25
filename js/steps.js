@@ -60,7 +60,7 @@ function render() {
     el.stepText.textContent = "やりたいことを上の欄に書いて「開始」を押してください";
     el.stepHint.textContent = AI.enabled()
       ? "例: 表を入れたい、背景を消したい、セルを実行したい。どのソフトでも案内します。"
-      : "AI の設定（⚙ 設定 → 🤖 AI）が必要です。AI なしで試すなら、下の「PowerPoint のレッスン」から選べます。";
+      : "AI なしでも、テンプレがある作業（例:「スライドに表を入れたい」）は案内できます。下の「📚 テンプレとレッスン」からも選べます。何でも頼むには AI の設定（⚙ 設定 → 🤖 AI）が必要です。";
     el.inputBox.hidden = true;
     el.checkChip.hidden = true;
   } else {
