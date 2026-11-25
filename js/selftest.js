@@ -474,7 +474,8 @@ const SelfTest = (() => {
       if (el.shareTopBtn.hidden || !el.stopCaptureBtn.hidden || !el.captureFoot.hidden) return "共有前の表示が違う";
       await startCapture(fakeStream());
       if (!el.shareTopBtn.hidden || el.stopCaptureBtn.hidden || el.pauseBtn.hidden || el.captureFoot.hidden) return "共有中の表示が違う";
-      if (el.captureChip.textContent !== "画面を共有中") return `共有中の表示: ${el.captureChip.textContent}`;
+      // 偽の共有はウインドウ扱いなので「ウインドウだけを共有中」になる
+      if (!/^(画面|ウインドウだけ)を共有中$/.test(el.captureChip.textContent)) return `共有中の表示: ${el.captureChip.textContent}`;
       el.pauseBtn.click();
       if (!/再開/.test(el.pauseBtn.textContent) || !/一時停止/.test(el.captureChip.textContent)) return "一時停止が表示に出ない";
       stopCapture();
@@ -1147,6 +1148,22 @@ const SelfTest = (() => {
       if (!prompt.includes("input_text") || !prompt.includes("中身を利用者に考えさせない")) return "AI に中身を書くよう頼んでいない";
       if (el.inputBox.hidden) return "入力する中身が表示されていない";
       if (el.inputText.textContent !== code) return `中身が崩れている（字下げ・改行）: ${JSON.stringify(el.inputText.textContent)}`;
+    }],
+    ["ウインドウだけの共有: 小さな窓が写らないことを知らせ、画面全体へ切り替えるボタンを出す", async () => {
+      const keep = state.stream;
+      state.stream = { getTracks: () => [] };
+      state.surface = "window";
+      renderShareControls();
+      const shown = !el.shareWarn.hidden, chip = el.captureChip.textContent;
+      state.surface = "monitor";
+      renderShareControls();
+      const hiddenOnMonitor = el.shareWarn.hidden;
+      state.stream = keep;
+      state.surface = "window";
+      renderShareControls();
+      if (!shown) return "ウインドウ共有なのに注意が出ない";
+      if (!chip.includes("ウインドウだけ")) return `上の表示がそのまま（${chip}）`;
+      if (!hiddenOnMonitor) return "画面全体の共有でも注意が出ている";
     }],
     ["画面全体の共有: ミニ窓の場所を白く塗りつぶしてから読む", async () => {
       const sw = screen.width, sh = screen.height;

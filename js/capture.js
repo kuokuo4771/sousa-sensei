@@ -5,14 +5,18 @@ el.startCaptureBtn.addEventListener("click", quickStart);
 el.shareTopBtn.addEventListener("click", quickStart);
 el.stopCaptureBtn.addEventListener("click", stopCapture);
 el.pauseBtn.addEventListener("click", togglePause);
+el.shareWarnBtn.addEventListener("click", switchToMonitor);
 
 // 画面共有のいまの状態を、上のバーの表示とボタンに反映する（共有していないときだけ「共有する」を出す）
 function renderShareControls() {
   const sharing = !!state.stream;
+  // ウインドウだけの共有では、そのソフトが別に開く小さな窓（Photoshop の文字の設定、メニュー、ダイアログ）が写らない
+  const windowOnly = sharing && state.surface === "window";
   el.captureChip.textContent = sharing
-    ? (state.paused ? "画面を共有中（見守りは一時停止）" : "画面を共有中")
+    ? (state.paused ? "画面を共有中（見守りは一時停止）" : windowOnly ? "ウインドウだけを共有中" : "画面を共有中")
     : web.tabId ? "🌐 Web アプリにつないでいます" : "画面を共有していません";
-  el.captureChip.classList.toggle("on", sharing || !!web.tabId);
+  el.shareWarn.hidden = !windowOnly;
+  el.captureChip.classList.toggle("on", (sharing && !windowOnly) || !!web.tabId);
   el.shareTopBtn.hidden = sharing;
   el.pauseBtn.hidden = !sharing;
   el.stopCaptureBtn.hidden = !sharing;
@@ -107,6 +111,21 @@ async function startCapture(stream) {
   } catch (e) {
     setWatch(`${e.name}: ${e.message}`, "small");
   }
+}
+
+// ウインドウだけの共有から、画面全体の共有に切り替える。いまのレッスンはそのまま続ける
+async function switchToMonitor() {
+  let stream;
+  try {
+    stream = await requestShare();
+  } catch (e) {
+    setWatch(e.name === "NotAllowedError" ? "切り替えをやめました。いまの共有のまま続けます。" : `${e.name}: ${e.message}`, "small");
+    return;
+  }
+  // 古い共有を止める（stop() では ended が来ないが、念のため外してから止める）
+  state.stream?.getTracks().forEach((t) => { t.removeEventListener("ended", stopCapture); t.stop(); });
+  await startCapture(stream);
+  if (state.surface === "monitor") addLog("🖥 画面全体の共有に切り替えました");
 }
 
 function stopCapture() {

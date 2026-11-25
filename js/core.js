@@ -60,7 +60,7 @@ const el = Object.fromEntries([
   "autoBtn", "voiceBtn", "countdown", "countdownBar",
   "appSelect", "tplSource", "docApp", "docHelp", "docUrl", "docText", "docMake",
   "planBox", "planList", "planBtn", "tplNote", "tplNoteText", "tplAiBtn", "saveTplBtn", "tplBtn", "tplDialog", "tplList",
-  "tplText", "tplResult", "tplExport", "tplImport", "tplClose", "doneTitle", "doneNote", "doneStats", "voiceGoalBtn", "presentBtn", "loopBox", "finishBtn", "continueBtn", "shareTopBtn", "captureFoot", "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
+  "tplText", "tplResult", "tplExport", "tplImport", "tplClose", "doneTitle", "doneNote", "doneStats", "voiceGoalBtn", "presentBtn", "loopBox", "finishBtn", "continueBtn", "shareTopBtn", "captureFoot", "shareWarn", "shareWarnBtn", "makeBtn", "aiBtn", "askBtn", "aiBox", "aiText",
   "aiDialog", "builtinRadio", "builtinState", "builtinPrepare", "geminiFields", "geminiKey", "geminiModel",
   "aiTestResult", "aiTest", "aiClose", "aiSave", "goalForm", "goalInline", "settingsBtn", "settingsPop",
   "webBtn", "webDialog", "webMissing", "webReady", "webTabs", "webResult", "webRefresh", "webClose", "webDisconnect",

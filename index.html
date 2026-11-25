@@ -525,6 +525,14 @@
   .ai-box.busy p { color: var(--muted); }
   .ai-box.error { background: var(--warn-soft); border-color: color-mix(in oklab, var(--warn) 35%, transparent); }
 
+  /* ウインドウだけを共有しているときの注意（ポップアップや小さな窓が写らない） */
+  .share-warn {
+    margin: 0 14px 10px; padding: 10px 12px; border-radius: 10px; font-size: 12.5px; line-height: 1.6;
+    background: var(--warn-soft); color: var(--ink); border-left: 3px solid var(--warn);
+  }
+  .share-warn strong { color: var(--warn); }
+  .share-warn .btn { margin-top: 6px; }
+
   .dialog {
     width: min(520px, calc(100vw - 32px)); padding: 20px 22px; border-radius: 14px;
     border: 1px solid var(--border); background: var(--panel); color: var(--ink);
@@ -652,6 +660,12 @@
             <div class="tutor-lesson" id="tutorLessonName"></div>
           </div>
           <div class="tutor-head-status" id="tutorStatus">共有待ち</div>
+        </div>
+
+        <div class="share-warn" id="shareWarn" hidden>
+          <strong>⚠ ソフトのウインドウだけを共有しています。</strong>
+          文字をクリックしたときに出る小さな窓・メニュー・ダイアログは別のウインドウなので写らず、操作しても気づけません。
+          <br><button class="btn" id="shareWarnBtn">🖥 画面全体の共有に切り替える</button>
         </div>
 
         <div class="tutor-progress">
